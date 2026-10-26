@@ -224,5 +224,9 @@ create policy "read own ai_requests"   on public.ai_requests for select to authe
 create policy "insert own ai_requests" on public.ai_requests for insert to authenticated
   with check (user_id = (select auth.uid()));
 
+-- Signed-in users reach tables only through the policies above.
+grant usage on schema public to authenticated;
+grant select, insert, update, delete on all tables in schema public to authenticated;
+
 -- Belt and braces: anonymous users get nothing.
 revoke all on all tables in schema public from anon;
