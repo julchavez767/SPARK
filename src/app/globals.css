@@ -1,0 +1,73 @@
+@import "tailwindcss";
+
+/* SPARK design tokens — "a lamp-lit notebook" */
+:root {
+  --bg: #faf7f2;
+  --surface: #ffffff;
+  --ink: #1f1b16;
+  --muted: #6e655a;
+  --line: #e8e1d6;
+  --ember: #e2561b;
+  --ember-soft: #fce9df;
+  --on-ember: #ffffff;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #14120f;
+    --surface: #1d1a16;
+    --ink: #f3eee6;
+    --muted: #a39a8e;
+    --line: #2e2923;
+    --ember: #ff7a3d;
+    --ember-soft: #3a2117;
+    --on-ember: #14120f;
+  }
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-ink: var(--ink);
+  --color-muted: var(--muted);
+  --color-line: var(--line);
+  --color-ember: var(--ember);
+  --color-ember-soft: var(--ember-soft);
+  --color-on-ember: var(--on-ember);
+  --font-sans: var(--font-geist), ui-sans-serif, system-ui, sans-serif;
+  --font-serif: var(--font-newsreader), Georgia, "Times New Roman", serif;
+  --radius-card: 14px;
+}
+
+html {
+  background: var(--bg);
+  color: var(--ink);
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-sans);
+}
+
+:focus-visible {
+  outline: 2px solid var(--ember);
+  outline-offset: 2px;
+}
+
+@keyframes spark-pulse {
+  0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--ember) 45%, transparent); }
+  100% { box-shadow: 0 0 0 14px transparent; }
+}
+
+.spark-pulse {
+  animation: spark-pulse 400ms ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
