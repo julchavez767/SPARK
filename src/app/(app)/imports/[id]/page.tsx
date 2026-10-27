@@ -13,7 +13,7 @@ const dateFmt = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric
 
 const REASON_LABEL: Record<string, string> = {
   edited: "edited",
-  "history added": "has a note or status change",
+  "history added": "has notes, status or link changes",
   "linked since": "linked since",
   "tagged since": "tagged since",
   "has milestones or actions": "has milestones or actions",

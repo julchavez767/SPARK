@@ -65,19 +65,42 @@ export async function captureItem(_prev: CaptureState, formData: FormData): Prom
 }
 
 /** Change an item's status, checked against the statuses its type allows. */
-export async function setStatus(formData: FormData): Promise<void> {
+/** Change an item's status. Every rejection is logged and shown; nothing fails silently. */
+export async function setStatus(_prev: FormState, formData: FormData): Promise<FormState> {
   const parsed = statusSchema.safeParse({ id: formData.get("id"), status: formData.get("status") });
-  if (!parsed.success) return;
+  if (!parsed.success) {
+    console.warn("setStatus rejected: bad input", { id: formData.get("id"), status: formData.get("status") });
+    return { error: "That status change couldn't be read. Refresh and try again." };
+  }
 
-  const { supabase } = await client();
-  const { data: item } = await supabase.from("items").select("type").eq("id", parsed.data.id).single();
-  if (!item || !isStatusFor(item.type as ItemType, parsed.data.status)) return;
+  const { supabase, user } = await client();
+  if (!user) return { error: "Your session expired. Sign in again." };
 
-  const { error } = await supabase.from("items").update({ status: parsed.data.status }).eq("id", parsed.data.id);
-  if (error) console.error("setStatus failed", error.message);
+  const { data: item, error: readError } = await supabase.from("items").select("type").eq("id", parsed.data.id).maybeSingle();
+  if (readError || !item) {
+    console.warn("setStatus rejected: item not found", { id: parsed.data.id, error: readError?.message });
+    return { error: "That item couldn't be found." };
+  }
+  if (!isStatusFor(item.type as ItemType, parsed.data.status)) {
+    console.warn("setStatus rejected: status does not fit type", { type: item.type, status: parsed.data.status });
+    return { error: "That status doesn't apply to this item." };
+  }
+
+  // Ask for the row back so a silently-blocked update is caught, not assumed.
+  const { data: updated, error } = await supabase
+    .from("items")
+    .update({ status: parsed.data.status })
+    .eq("id", parsed.data.id)
+    .select("status")
+    .maybeSingle();
+  if (error || !updated || updated.status !== parsed.data.status) {
+    console.error("setStatus failed", { id: parsed.data.id, error: error?.message, updated });
+    return { error: "Couldn't change the status. Try again." };
+  }
 
   revalidatePath(`/items/${parsed.data.id}`);
   revalidatePath("/library");
+  return { ok: true, at: Date.now() };
 }
 
 export async function renameItem(_prev: FormState, formData: FormData): Promise<FormState> {

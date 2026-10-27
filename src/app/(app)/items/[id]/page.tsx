@@ -3,7 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
-import { deleteItem, setStatus, unlinkItems } from "@/app/(app)/actions";
+import { deleteItem, unlinkItems } from "@/app/(app)/actions";
 import { StatusPill, TypeBadge } from "@/components/ItemBadges";
 import {
   ITEM_SUMMARY_COLUMNS,
@@ -18,13 +18,28 @@ import {
 import { loadCategories, tagsByItem } from "@/lib/items";
 import { Details } from "./Details";
 import { RelatedForms, RenameTitle } from "./RelatedForms";
+import { StatusPicker } from "./StatusPicker";
 
 export const metadata: Metadata = { title: "Item" };
 
 const dateFmt = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric" });
 const dateTimeFmt = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" });
 
-type Entry = { id: string; kind: string; body: string | null; data: { from?: string; to?: string }; created_at: string };
+type Entry = {
+  id: string;
+  kind: string;
+  body: string | null;
+  data: { from?: string; to?: string; other_id?: string; other_title?: string | null };
+  created_at: string;
+};
+
+function entryText(e: Entry): string | null {
+  if (e.kind === "status_change") {
+    return `Status ${STATUS_LABEL[e.data.from as ItemStatus] ?? e.data.from} → ${STATUS_LABEL[e.data.to as ItemStatus] ?? e.data.to}`;
+  }
+  if (e.kind === "link_removed") return `Unlinked from “${e.data.other_title ?? "a deleted item"}”`;
+  return e.body;
+}
 
 export default async function ItemPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -72,23 +87,7 @@ export default async function ItemPage({ params }: { params: Promise<{ id: strin
       <RenameTitle itemId={item.id} title={item.title} />
 
       {/* Status: one tap to change; options depend on the type */}
-      <form action={setStatus} className="mt-4 flex flex-wrap gap-1.5" aria-label="Status">
-        <input type="hidden" name="id" value={item.id} />
-        {(STATUSES[item.type] as readonly ItemStatus[]).map((s) => (
-          <button
-            key={s}
-            type="submit"
-            name="status"
-            value={s}
-            aria-pressed={item.status === s}
-            className={`rounded-full border px-3 py-1.5 text-sm ${
-              item.status === s ? "border-ink bg-ink font-medium text-bg" : "border-line text-muted hover:text-ink"
-            }`}
-          >
-            {STATUS_LABEL[s]}
-          </button>
-        ))}
-      </form>
+      <StatusPicker itemId={item.id} current={item.status} options={STATUSES[item.type] as readonly ItemStatus[]} />
 
       <section aria-labelledby="details-heading" className="mt-8">
         <h2 id="details-heading" className="mb-2 text-xs font-medium uppercase tracking-wide text-muted">Details</h2>
@@ -159,9 +158,7 @@ export default async function ItemPage({ params }: { params: Promise<{ id: strin
               <li key={e.id}>
                 <time dateTime={e.created_at}>{dateTimeFmt.format(new Date(e.created_at))}</time>
                 {" · "}
-                {e.kind === "status_change"
-                  ? `Status ${STATUS_LABEL[e.data.from as ItemStatus] ?? e.data.from} → ${STATUS_LABEL[e.data.to as ItemStatus] ?? e.data.to}`
-                  : e.body}
+                {entryText(e)}
               </li>
             ))}
             <li>
