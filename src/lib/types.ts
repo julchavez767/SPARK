@@ -39,7 +39,17 @@ export const STATUS_LABEL: Record<ItemStatus, string> = {
   retired: "Retired",
 };
 
+/** How the item was entered: typed or dictated. Not the same as where the idea came from. */
 export type ItemSource = "text" | "voice";
+
+/** Whose idea it was. Optional. */
+export const ORIGINS = ["mine", "co_developed", "suggested"] as const;
+export type ItemOrigin = (typeof ORIGINS)[number];
+export const ORIGIN_LABEL: Record<ItemOrigin, string> = {
+  mine: "My idea",
+  co_developed: "Co-developed",
+  suggested: "Suggested",
+};
 
 export type ItemSummary = {
   id: string;
@@ -49,9 +59,39 @@ export type ItemSummary = {
   original_body: string | null;
   source: ItemSource;
   created_at: string;
+  updated_at: string;
+  category_id: string | null;
+  source_name: string | null;
+  source_url: string | null;
+  origin: ItemOrigin | null;
+  import_id: string | null;
 };
 
-export const ITEM_SUMMARY_COLUMNS = "id, type, status, title, original_body, source, created_at";
+export const ITEM_SUMMARY_COLUMNS =
+  "id, type, status, title, original_body, source, created_at, updated_at, category_id, source_name, source_url, origin, import_id";
+
+export type Category = { id: string; name: string };
+export type Tag = { id: string; name: string };
+
+export const SORTS = ["newest", "oldest", "updated", "title"] as const;
+export type SortKey = (typeof SORTS)[number];
+export const SORT_LABEL: Record<SortKey, string> = {
+  newest: "Newest first",
+  oldest: "Oldest first",
+  updated: "Recently updated",
+  title: "Title A–Z",
+};
+
+export function isOrigin(value: unknown): value is ItemOrigin {
+  return typeof value === "string" && (ORIGINS as readonly string[]).includes(value);
+}
+
+/** Every status across all types, without repeats (Archived is shared). */
+export const ALL_STATUSES: ItemStatus[] = Array.from(new Set(ITEM_TYPES.flatMap((t) => [...STATUSES[t]]))) as ItemStatus[];
+
+export function isAnyStatus(value: unknown): value is ItemStatus {
+  return typeof value === "string" && (ALL_STATUSES as string[]).includes(value);
+}
 
 export function isItemType(value: unknown): value is ItemType {
   return typeof value === "string" && (ITEM_TYPES as readonly string[]).includes(value);

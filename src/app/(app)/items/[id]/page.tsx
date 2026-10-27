@@ -15,10 +15,13 @@ import {
   type ItemSummary,
   type ItemType,
 } from "@/lib/types";
+import { loadCategories, tagsByItem } from "@/lib/items";
+import { Details } from "./Details";
 import { RelatedForms, RenameTitle } from "./RelatedForms";
 
 export const metadata: Metadata = { title: "Item" };
 
+const dateFmt = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric" });
 const dateTimeFmt = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" });
 
 type Entry = { id: string; kind: string; body: string | null; data: { from?: string; to?: string }; created_at: string };
@@ -39,6 +42,15 @@ export default async function ItemPage({ params }: { params: Promise<{ id: strin
     supabase.from("items").select("id, type, title").neq("id", id).order("title").limit(500),
     supabase.from("items").update({ last_viewed_at: new Date().toISOString() }).eq("id", id),
   ]);
+
+  const [categories, tagMap, importRes] = await Promise.all([
+    loadCategories(supabase),
+    tagsByItem(supabase, [id]),
+    item.import_id
+      ? supabase.from("imports").select("id, file_name, created_at").eq("id", item.import_id).maybeSingle()
+      : Promise.resolve({ data: null }),
+  ]);
+  const imp = importRes.data as { id: string; file_name: string | null; created_at: string } | null;
 
   const relatedIds = (linksRes.data ?? []).map((l) => (l.a_id === id ? l.b_id : l.a_id) as string);
   const { data: relatedRows } = relatedIds.length
@@ -77,6 +89,20 @@ export default async function ItemPage({ params }: { params: Promise<{ id: strin
           </button>
         ))}
       </form>
+
+      <section aria-labelledby="details-heading" className="mt-8">
+        <h2 id="details-heading" className="mb-2 text-xs font-medium uppercase tracking-wide text-muted">Details</h2>
+        <Details
+          itemId={item.id}
+          categories={categories}
+          categoryId={item.category_id}
+          tags={tagMap.get(item.id) ?? []}
+          sourceName={item.source_name}
+          sourceUrl={item.source_url}
+          origin={item.origin}
+          imported={imp ? { id: imp.id, fileName: imp.file_name, date: dateFmt.format(new Date(imp.created_at)) } : null}
+        />
+      </section>
 
       {item.original_body && (
         <section aria-labelledby="original-heading" className="mt-8">

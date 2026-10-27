@@ -4,10 +4,12 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { isStatusFor, orderedPair, TYPE_LABEL, type ItemType } from "@/lib/types";
+import { ensureCategory, parseTagList, setItemTags } from "@/lib/items";
 import {
   captureSchema,
   createRelatedSchema,
   deriveTitle,
+  detailsSchema,
   linkSchema,
   statusSchema,
   titleSchema,
@@ -155,6 +157,47 @@ export async function createRelated(_prev: FormState, formData: FormData): Promi
   if (linkError) console.error("createRelated link failed", linkError.message);
 
   revalidatePath(`/items/${parsed.data.fromId}`);
+  revalidatePath("/library");
+  return { ok: true, at: Date.now() };
+}
+
+/** Category, tags, source, source URL and origin. Only fields that changed are written. */
+export async function updateDetails(_prev: FormState, formData: FormData): Promise<FormState> {
+  const parsed = detailsSchema.safeParse({
+    id: formData.get("id"),
+    categoryId: formData.get("categoryId") ?? "",
+    newCategory: formData.get("newCategory") ?? "",
+    tags: formData.get("tags") ?? "",
+    sourceName: formData.get("sourceName") ?? "",
+    sourceUrl: formData.get("sourceUrl") ?? "",
+    origin: formData.get("origin") ?? "",
+  });
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Check the details." };
+  const d = parsed.data;
+
+  const { supabase, user } = await client();
+  if (!user) return { error: "Your session expired. Sign in again." };
+
+  try {
+    let categoryId: string | null = d.categoryId === "" ? null : d.categoryId;
+    if (d.categoryId === "__new") {
+      if (!d.newCategory) return { error: "Name the new category." };
+      categoryId = await ensureCategory(supabase, d.newCategory);
+    }
+
+    const { error } = await supabase
+      .from("items")
+      .update({ category_id: categoryId, source_name: d.sourceName, source_url: d.sourceUrl, origin: d.origin })
+      .eq("id", d.id);
+    if (error) throw new Error(error.message);
+
+    await setItemTags(supabase, d.id, parseTagList(d.tags));
+  } catch (e) {
+    console.error("updateDetails failed", e instanceof Error ? e.message : e);
+    return { error: "Couldn't save the details. Try again." };
+  }
+
+  revalidatePath(`/items/${d.id}`);
   revalidatePath("/library");
   return { ok: true, at: Date.now() };
 }

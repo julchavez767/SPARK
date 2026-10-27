@@ -51,8 +51,47 @@ export function deriveTitle(body: string, max = 120): string {
   return `${(lastSpace > max * 0.6 ? cut.slice(0, lastSpace) : cut).trimEnd()}…`;
 }
 
+const optionalText = (max: number) =>
+  z
+    .string()
+    .trim()
+    .max(max)
+    .transform((v) => (v === "" ? null : v.replace(/\s+/g, " ")));
+
+/** http(s) only, so a stored link can never run script when clicked. */
+export const sourceUrlSchema = z
+  .string()
+  .trim()
+  .max(2000, "That link is too long.")
+  .transform((v) => (v === "" ? null : v))
+  .refine((v) => {
+    if (v === null) return true;
+    try {
+      const u = new URL(v);
+      return u.protocol === "http:" || u.protocol === "https:";
+    } catch {
+      return false;
+    }
+  }, "Source URL must start with http:// or https://");
+
+export const detailsSchema = z.object({
+  id: uuid,
+  categoryId: z.union([uuid, z.literal(""), z.literal("__new")]),
+  newCategory: optionalText(60),
+  tags: z.string().max(1000).default(""),
+  sourceName: optionalText(100),
+  sourceUrl: sourceUrlSchema,
+  origin: z.enum(["", "mine", "co_developed", "suggested"]).transform((v) => (v === "" ? null : v)),
+});
+
+export const categoryNameSchema = z.string().trim().min(1, "Give the category a name.").max(60, "Keep it under 60 characters.").transform((v) => v.replace(/\s+/g, " "));
+
 export const searchSchema = z.object({
   q: z.string().trim().max(LIMITS.search).optional().catch(undefined),
   type: itemType.optional().catch(undefined),
   status: z.string().max(40).optional().catch(undefined),
+  cat: z.union([z.string().uuid(), z.literal("none")]).optional().catch(undefined),
+  tag: z.string().uuid().optional().catch(undefined),
+  import: z.string().uuid().optional().catch(undefined),
+  sort: z.enum(["newest", "oldest", "updated", "title"]).optional().catch(undefined),
 });
