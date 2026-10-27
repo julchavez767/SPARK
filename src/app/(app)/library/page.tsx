@@ -89,7 +89,10 @@ export default async function LibraryPage({ searchParams }: { searchParams: Prom
     <>
       <div className="mb-4 flex items-center justify-between gap-3">
         <h1 className="font-serif text-2xl">Library</h1>
-        {/* IMPORT_BUTTON */}
+        <Link href="/import" className="flex h-9 items-center gap-1.5 rounded-full border border-line px-3 text-sm text-muted hover:text-ink">
+          <svg viewBox="0 0 24 24" className="h-4 w-4" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 4v11m0 0-4-4m4 4 4-4M5 19h14" /></svg>
+          Import
+        </Link>
       </div>
 
       <form role="search" action="/library" className="mb-3">
@@ -182,7 +185,7 @@ export default async function LibraryPage({ searchParams }: { searchParams: Prom
 
       <footer className="mt-10 flex flex-wrap gap-x-4 gap-y-2 border-t border-line pt-4 text-sm text-muted">
         <Link href="/categories" className="hover:text-ink">Manage categories</Link>
-        {/* IMPORT_FOOTER */}
+        <Link href="/imports" className="hover:text-ink">Import history</Link>
       </footer>
     </>
   );

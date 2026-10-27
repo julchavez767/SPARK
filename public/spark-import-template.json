@@ -1,0 +1,43 @@
+{
+  "items": [
+    {
+      "type": "idea",
+      "title": "Weekly idea digest",
+      "description": "Every Sunday, email me three ideas I haven't touched in a while.",
+      "status": "spark",
+      "category": "Business",
+      "tags": ["email", "habits"],
+      "ref": "i1",
+      "related": ["s1"],
+      "source": "ChatGPT",
+      "source_url": "https://chatgpt.com/c/example",
+      "origin": "Co-developed",
+      "created": "2025-03-01"
+    },
+    {
+      "type": "project",
+      "title": "Build the digest emailer",
+      "description": "Small script that sends the weekly digest.",
+      "status": "active",
+      "category": "Business",
+      "tags": ["email", "automation"],
+      "ref": "p1",
+      "related": ["i1", "s1"],
+      "source": "Claude",
+      "origin": "My idea",
+      "created": "2025-04-10"
+    },
+    {
+      "type": "system",
+      "title": "Monthly newsletter",
+      "description": "The newsletter I already send to about 200 people.",
+      "status": "running",
+      "category": "Business",
+      "tags": ["writing"],
+      "ref": "s1",
+      "source": "Personal thought",
+      "origin": "My idea",
+      "created": "2024-06-01"
+    }
+  ]
+}

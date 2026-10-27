@@ -1,0 +1,4 @@
+type,title,description,status,category,tags,ref,related,source,source_url,origin,created
+idea,Weekly idea digest,"Every Sunday, email me three ideas I haven't touched in a while.",spark,Business,email;habits,i1,s1,ChatGPT,https://chatgpt.com/c/example,Co-developed,2025-03-01
+project,Build the digest emailer,Small script that sends the weekly digest.,active,Business,email;automation,p1,i1;s1,Claude,,My idea,2025-04-10
+system,Monthly newsletter,The newsletter I already send to about 200 people.,running,Business,writing,s1,,Personal thought,,My idea,2024-06-01
