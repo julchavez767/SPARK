@@ -84,7 +84,7 @@ export async function setItemTags(supabase: Client, itemId: string, names: strin
 
   const wanted = new Set(names.map((n) => byLower.get(n.toLowerCase())).filter((id): id is string => Boolean(id)));
   const { data: current } = await supabase.from("item_tags").select("tag_id").eq("item_id", itemId);
-  const have = new Set((current ?? []).map((r) => r.tag_id as string));
+  const have = new Set<string>((current ?? []).map((r) => r.tag_id as string));
 
   const toRemove = [...have].filter((id) => !wanted.has(id));
   const toAdd = [...wanted].filter((id) => !have.has(id));
