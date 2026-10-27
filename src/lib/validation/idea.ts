@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { ITEM_TYPES } from "@/lib/types";
 
 export const LIMITS = {
   title: 200,
@@ -6,16 +7,39 @@ export const LIMITS = {
   search: 200,
 } as const;
 
+const itemType = z.enum(ITEM_TYPES);
+const uuid = z.string().uuid("That item couldn't be found.");
+
 export const captureSchema = z.object({
   body: z
     .string()
     .trim()
     .min(1, "Write or say something first.")
-    .max(LIMITS.body, `Ideas are limited to ${LIMITS.body.toLocaleString()} characters.`),
+    .max(LIMITS.body, `Items are limited to ${LIMITS.body.toLocaleString()} characters.`),
+  type: itemType.default("idea"),
   source: z.enum(["text", "voice"]).default("text"),
 });
 
-export type CaptureInput = z.infer<typeof captureSchema>;
+export const createRelatedSchema = z.object({
+  fromId: uuid,
+  type: itemType,
+  title: z.string().trim().min(1, "Give it a name.").max(LIMITS.title),
+});
+
+export const linkSchema = z.object({
+  fromId: uuid,
+  toId: uuid,
+});
+
+export const statusSchema = z.object({
+  id: uuid,
+  status: z.string().min(1).max(40),
+});
+
+export const titleSchema = z.object({
+  id: uuid,
+  title: z.string().trim().min(1, "The title can't be empty.").max(LIMITS.title),
+});
 
 /** The title is the first non-empty line, trimmed to a readable length. */
 export function deriveTitle(body: string, max = 120): string {
@@ -29,5 +53,6 @@ export function deriveTitle(body: string, max = 120): string {
 
 export const searchSchema = z.object({
   q: z.string().trim().max(LIMITS.search).optional().catch(undefined),
-  status: z.enum(["spark", "exploring", "parked", "activated", "archived"]).optional().catch(undefined),
+  type: itemType.optional().catch(undefined),
+  status: z.string().max(40).optional().catch(undefined),
 });

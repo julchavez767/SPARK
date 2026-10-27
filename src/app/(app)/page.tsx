@@ -1,18 +1,20 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { CaptureBox } from "@/components/CaptureBox";
-import { IdeaCard } from "@/components/IdeaCard";
-import type { IdeaListItem } from "@/lib/types";
+import { ItemCard } from "@/components/ItemCard";
+import { linkCounts } from "@/lib/items";
+import { ITEM_SUMMARY_COLUMNS, type ItemSummary } from "@/lib/types";
 
 export default async function CapturePage() {
   const supabase = await createClient();
   const { data, error } = await supabase
-    .from("ideas")
-    .select("id, title, original_body, status, source, created_at")
+    .from("items")
+    .select(ITEM_SUMMARY_COLUMNS)
     .order("created_at", { ascending: false })
     .limit(5);
 
-  const recent = (data ?? []) as IdeaListItem[];
+  const recent = (data ?? []) as ItemSummary[];
+  const counts = await linkCounts(supabase, recent.map((r) => r.id));
 
   return (
     <>
@@ -28,16 +30,16 @@ export default async function CapturePage() {
         </div>
 
         {error ? (
-          <p role="alert" className="text-sm text-ember">Couldn’t load your ideas. Refresh to try again.</p>
+          <p role="alert" className="text-sm text-ember">Couldn’t load your items. Refresh to try again.</p>
         ) : recent.length === 0 ? (
           <p className="rounded-[14px] border border-dashed border-line p-6 text-center text-sm text-muted">
             Nothing here yet. Your first idea doesn’t need to be good — it just needs to be saved.
           </p>
         ) : (
           <ul className="space-y-3">
-            {recent.map((idea) => (
-              <li key={idea.id}>
-                <IdeaCard idea={idea} />
+            {recent.map((item) => (
+              <li key={item.id}>
+                <ItemCard item={item} linkCount={counts.get(item.id)} />
               </li>
             ))}
           </ul>

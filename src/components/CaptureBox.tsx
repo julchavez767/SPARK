@@ -1,8 +1,17 @@
 "use client";
 
+import Link from "next/link";
 import { useActionState, useEffect, useRef, useState } from "react";
-import { captureIdea, type CaptureState } from "@/app/(app)/actions";
+import { captureItem, type CaptureState } from "@/app/(app)/actions";
+import { ITEM_TYPES, TYPE_LABEL, type ItemType } from "@/lib/types";
 import { LIMITS } from "@/lib/validation/idea";
+import { TYPE_STYLE } from "./ItemBadges";
+
+const PLACEHOLDER: Record<ItemType, string> = {
+  idea: "What’s the idea?",
+  project: "What are you building? First line is the name.",
+  system: "What do you already run? First line is the name.",
+};
 
 const DRAFT_KEY = "spark:capture-draft";
 const initial: CaptureState = { status: "idle" };
@@ -24,7 +33,8 @@ function writeDraft(value: string) {
 }
 
 export function CaptureBox() {
-  const [state, formAction, pending] = useActionState(captureIdea, initial);
+  const [state, formAction, pending] = useActionState(captureItem, initial);
+  const [type, setType] = useState<ItemType>("idea");
   const [text, setText] = useState("");
   const [usedVoice, setUsedVoice] = useState(false);
   const [listening, setListening] = useState(false);
@@ -117,8 +127,33 @@ export function CaptureBox() {
       }}
       className={`rounded-[14px] border border-line bg-surface p-3 transition-shadow focus-within:border-ember ${pulse ? "spark-pulse" : ""}`}
     >
+      <fieldset className="mb-2 flex gap-1 px-1">
+        <legend className="sr-only">Type</legend>
+        {ITEM_TYPES.map((t) => {
+          const selected = type === t;
+          const s = TYPE_STYLE[t];
+          return (
+            <label
+              key={t}
+              className={`cursor-pointer rounded-full border px-3 py-1 text-sm transition-colors has-[:focus-visible]:outline has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-ember ${
+                selected ? `${s.border} ${s.bg} ${s.text} font-medium` : "border-transparent text-muted hover:text-ink"
+              }`}
+            >
+              <input
+                type="radio"
+                name="type"
+                value={t}
+                checked={selected}
+                onChange={() => setType(t)}
+                className="sr-only"
+              />
+              {TYPE_LABEL[t]}
+            </label>
+          );
+        })}
+      </fieldset>
       <label htmlFor="capture" className="sr-only">
-        New idea
+        New {TYPE_LABEL[type].toLowerCase()}
       </label>
       <textarea
         ref={areaRef}
@@ -130,7 +165,7 @@ export function CaptureBox() {
         maxLength={LIMITS.body}
         rows={3}
         autoFocus
-        placeholder="What’s the idea?"
+        placeholder={PLACEHOLDER[type]}
         className="block min-h-24 w-full resize-y bg-transparent px-2 py-1 font-serif text-[17px] leading-relaxed outline-none placeholder:text-muted"
       />
       <input type="hidden" name="source" value={usedVoice ? "voice" : "text"} />
@@ -168,7 +203,11 @@ export function CaptureBox() {
         {state.status === "error" && <span className="text-ember">{state.message}</span>}
         {state.status === "saved" && !pending && (
           <span className="text-muted">
-            Saved “<span className="text-ink">{state.title}</span>”
+            Saved {TYPE_LABEL[state.type].toLowerCase()} “
+            <Link href={`/items/${state.id}`} className="text-ink underline-offset-2 hover:underline">
+              {state.title}
+            </Link>
+            ”
           </span>
         )}
       </p>

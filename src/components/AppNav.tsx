@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { SparkMark } from "./SparkMark";
 
-// Projects and Rediscover join this list in Phases 3 and 4.
+// Ideas, projects and systems all live in the Library, filtered by type.
 const ITEMS = [
   { href: "/", label: "Capture", icon: "M12 5v14M5 12h14" },
   { href: "/library", label: "Library", icon: "M4 5h16M4 12h16M4 19h10" },
@@ -20,7 +20,8 @@ function Icon({ d }: { d: string }) {
 
 export function AppNav({ email }: { email: string }) {
   const pathname = usePathname();
-  const isActive = (href: string) => (href === "/" ? pathname === "/" : pathname.startsWith(href));
+  const isActive = (href: string) =>
+    href === "/" ? pathname === "/" : pathname.startsWith(href) || (href === "/library" && pathname.startsWith("/items"));
 
   return (
     <>
