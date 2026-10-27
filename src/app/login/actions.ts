@@ -14,10 +14,17 @@ export async function sendMagicLink(_prev: LoginState, formData: FormData): Prom
     return { status: "error", message: parsed.error.issues[0]?.message ?? "Enter a valid email address." };
   }
 
+  // A sign-in must finish on the same site it started on. Production uses the
+  // configured site URL; a Vercel preview uses its own stable branch address.
+  const base =
+    process.env.VERCEL_ENV === "preview" && process.env.VERCEL_BRANCH_URL
+      ? `https://${process.env.VERCEL_BRANCH_URL}`
+      : env.siteUrl;
+
   const supabase = await createClient();
   const { error } = await supabase.auth.signInWithOtp({
     email: parsed.data,
-    options: { emailRedirectTo: `${env.siteUrl}/auth/callback` },
+    options: { emailRedirectTo: `${base}/auth/callback` },
   });
 
   if (error) {
