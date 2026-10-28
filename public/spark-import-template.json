@@ -12,7 +12,12 @@
       "source": "ChatGPT",
       "source_url": "https://chatgpt.com/c/example",
       "origin": "Co-developed",
-      "created": "2025-03-01"
+      "created": "2025-03-01",
+      "reasoning": [
+        { "type": "hypothesis", "text": "Seeing old ideas weekly will get me to act on more of them.", "date": "2025-03-01" },
+        { "type": "challenge", "text": "Another weekly email might just get ignored.", "date": "2025-03" },
+        { "type": "decision", "text": "Limit it to three ideas so it stays quick to read.", "date": "" }
+      ]
     },
     {
       "type": "project",
@@ -25,7 +30,11 @@
       "related": ["i1", "s1"],
       "source": "Claude",
       "origin": "My idea",
-      "created": "2025-04-10"
+      "created": "2025-04-10",
+      "reasoning": [
+        "Plain text with no type becomes a note.",
+        { "type": "lesson", "text": "Sending at 7am gets more opens than evenings.", "date": "2025-05-02" }
+      ]
     },
     {
       "type": "system",

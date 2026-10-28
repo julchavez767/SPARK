@@ -16,6 +16,7 @@ import {
   type ItemType,
   REASONING_KINDS,
   type ReasoningEntry,
+  compareReasoning,
 } from "@/lib/types";
 import { loadCategories, tagsByItem } from "@/lib/items";
 import { Details } from "./Details";
@@ -70,9 +71,9 @@ export default async function ItemPage({ params }: { params: Promise<{ id: strin
     item.import_id
       ? supabase.from("imports").select("id, file_name, created_at").eq("id", item.import_id).maybeSingle()
       : Promise.resolve({ data: null }),
-    supabase.from("item_entries").select("id, kind, body, created_at").eq("item_id", id).in("kind", [...REASONING_KINDS]).order("created_at", { ascending: false }).limit(500),
+    supabase.from("item_entries").select("id, kind, body, created_at, occurred_on, import_id, data").eq("item_id", id).in("kind", [...REASONING_KINDS]).order("created_at", { ascending: false }).limit(500),
   ]);
-  const reasoning = (reasoningRes.data ?? []) as ReasoningEntry[];
+  const reasoning = ((reasoningRes.data ?? []) as ReasoningEntry[]).sort(compareReasoning);
   const imp = importRes.data as { id: string; file_name: string | null; created_at: string } | null;
 
   const relatedIds = (linksRes.data ?? []).map((l) => (l.a_id === id ? l.b_id : l.a_id) as string);

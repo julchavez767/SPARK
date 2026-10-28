@@ -14,13 +14,15 @@ type ImportRow = {
   created_at: string;
   undone_at: string | null;
   removed_count: number;
+  entry_count: number;
+  attached_entry_count: number;
 };
 
 export default async function ImportsPage() {
   const supabase = await createClient();
   const { data } = await supabase
     .from("imports")
-    .select("id, file_name, item_count, link_count, created_at, undone_at, removed_count")
+    .select("id, file_name, item_count, link_count, created_at, undone_at, removed_count, entry_count, attached_entry_count")
     .order("created_at", { ascending: false })
     .limit(100);
   const imports = (data ?? []) as ImportRow[];
@@ -48,6 +50,8 @@ export default async function ImportsPage() {
                 </div>
                 <p className="mt-0.5 text-sm text-muted">
                   {dateFmt.format(new Date(imp.created_at))} · {imp.item_count} item{imp.item_count === 1 ? "" : "s"} · {imp.link_count} link{imp.link_count === 1 ? "" : "s"}
+                  {imp.entry_count > 0 && ` · ${imp.entry_count} reasoning entr${imp.entry_count === 1 ? "y" : "ies"}`}
+                  {imp.attached_entry_count > 0 && ` (${imp.attached_entry_count} on existing items)`}
                   {imp.undone_at && ` · ${imp.removed_count} removed`}
                 </p>
               </Link>

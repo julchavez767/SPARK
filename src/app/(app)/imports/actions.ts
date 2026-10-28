@@ -9,12 +9,16 @@ export type UndoReport = {
   already_undone: boolean;
   total: number;
   removable: number;
+  /** Reasoning entries this import added to items that were already in SPARK. */
+  entries_attached?: number;
+  attached_items?: number;
   protected: { id: string; title: string; type: "idea" | "project" | "system"; reasons: string[] }[];
   removed?: number;
+  entries_removed?: number;
   applied?: boolean;
 };
 
-export type UndoState = { error?: string; removed?: number; kept?: number };
+export type UndoState = { error?: string; removed?: number; kept?: number; entriesRemoved?: number };
 
 /** Removes only the import's untouched items. The database decides what is protected at the moment it runs. */
 export async function undoImport(_prev: UndoState, formData: FormData): Promise<UndoState> {
@@ -34,5 +38,5 @@ export async function undoImport(_prev: UndoState, formData: FormData): Promise<
   revalidatePath("/imports");
   revalidatePath("/library");
   revalidatePath("/");
-  return { removed: report.removed ?? 0, kept: report.protected.length };
+  return { removed: report.removed ?? 0, kept: report.protected.length, entriesRemoved: report.entries_removed ?? 0 };
 }

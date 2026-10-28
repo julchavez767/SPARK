@@ -1,4 +1,5 @@
 import { parseCsv } from "./csv";
+import { normalizeReasoning, REASONING_LIMITS, type ImportEntry } from "./reasoning";
 import {
   STATUSES,
   type ItemOrigin,
@@ -34,6 +35,7 @@ export type ImportRow = {
   sourceUrl: string | null;
   origin: ItemOrigin | null;
   created: string | null; // ISO timestamp
+  reasoning: ImportEntry[]; // Reasoning Log entries for this item (JSON only in practice)
   warnings: string[];
   errors: string[];
 };
@@ -42,11 +44,13 @@ export type ParsedFile = {
   rows: ImportRow[];
   ignoredColumns: string[];
   fileError: string | null;
+  /** File-level notes, e.g. a top-level key that isn't read. */
+  fileNotes: string[];
 };
 
 type Field =
   | "type" | "title" | "description" | "status" | "category" | "tags"
-  | "ref" | "related" | "source" | "source_url" | "origin" | "created";
+  | "ref" | "related" | "source" | "source_url" | "origin" | "created" | "reasoning";
 
 /** Column names people (and ChatGPT) tend to use, mapped to SPARK fields. */
 const ALIASES: Record<string, Field> = {
@@ -64,6 +68,8 @@ const ALIASES: Record<string, Field> = {
   source_url: "source_url", url: "source_url", link: "source_url", source_link: "source_url",
   origin: "origin", ownership: "origin", whose: "origin",
   created: "created", created_at: "created", date: "created", created_date: "created", date_created: "created",
+  reasoning: "reasoning", reasoning_log: "reasoning", reasoning_entries: "reasoning", entries: "reasoning",
+  log: "reasoning", reflections: "reasoning", journal: "reasoning",
 };
 
 function headerKey(h: string): string {
@@ -139,7 +145,7 @@ function parseDate(v: string): string | null {
   return new Date(t).toISOString();
 }
 
-function normalizeRecord(raw: Partial<Record<Field, unknown>>, index: number, now: number): ImportRow {
+function normalizeRecord(raw: Partial<Record<Field, unknown>>, index: number, now: number, ignored?: Set<string>): ImportRow {
   const warnings: string[] = [];
   const errors: string[] = [];
 
@@ -224,6 +230,11 @@ function normalizeRecord(raw: Partial<Record<Field, unknown>>, index: number, no
     }
   }
 
+  // Reasoning Log entries
+  const reasoning = normalizeReasoning(raw.reasoning, now, ignored);
+  warnings.push(...reasoning.warnings);
+  errors.push(...reasoning.errors);
+
   return {
     key: `r${index + 1}`,
     line: index + 1,
@@ -239,6 +250,7 @@ function normalizeRecord(raw: Partial<Record<Field, unknown>>, index: number, no
     sourceUrl,
     origin,
     created,
+    reasoning: reasoning.entries,
     warnings,
     errors,
   };
@@ -261,12 +273,13 @@ function mapRecord(record: Record<string, unknown>, ignored: Set<string>): Parti
 export function parseImport(text: string, fileName = "", now = Date.now()): ParsedFile {
   const ignored = new Set<string>();
   const trimmed = text.trim();
-  if (!trimmed) return { rows: [], ignoredColumns: [], fileError: "The file is empty." };
+  if (!trimmed) return { rows: [], ignoredColumns: [], fileNotes: [], fileError: "The file is empty." };
   if (text.length > IMPORT_LIMITS.maxFileBytes) {
-    return { rows: [], ignoredColumns: [], fileError: "The file is larger than 2 MB. Split it into smaller files." };
+    return { rows: [], ignoredColumns: [], fileNotes: [], fileError: "The file is larger than 2 MB. Split it into smaller files." };
   }
 
   let records: Record<string, unknown>[] = [];
+  const fileNotes: string[] = [];
   const looksJson = /\.json$/i.test(fileName) || trimmed.startsWith("[") || trimmed.startsWith("{");
 
   if (looksJson) {
@@ -274,30 +287,40 @@ export function parseImport(text: string, fileName = "", now = Date.now()): Pars
     try {
       data = JSON.parse(trimmed);
     } catch {
-      return { rows: [], ignoredColumns: [], fileError: "This JSON couldn’t be read. Check for a missing comma or bracket." };
+      return { rows: [], ignoredColumns: [], fileNotes: [], fileError: "This JSON couldn’t be read. Check for a missing comma or bracket." };
     }
     const list = Array.isArray(data)
       ? data
       : data && typeof data === "object" && Array.isArray((data as { items?: unknown }).items)
         ? (data as { items: unknown[] }).items
         : null;
-    if (!list) return { rows: [], ignoredColumns: [], fileError: "JSON must be a list of items, or an object with an “items” list." };
+    if (!list) return { rows: [], ignoredColumns: [], fileNotes: [], fileError: "JSON must be a list of items, or an object with an “items” list." };
     records = list.filter((r): r is Record<string, unknown> => Boolean(r) && typeof r === "object" && !Array.isArray(r));
+    if (!Array.isArray(data)) {
+      const extra = Object.keys(data as object).filter((k) => k !== "items");
+      if (extra.length > 0) {
+        fileNotes.push(`Only “items” is read. Ignored: ${extra.map((k) => `“${k}”`).join(", ")}. Reasoning goes inside each item, in its “reasoning” list.`);
+      }
+    }
   } else {
     const table = parseCsv(text);
-    if (table.length < 2) return { rows: [], ignoredColumns: [], fileError: "The CSV needs a header row and at least one item." };
+    if (table.length < 2) return { rows: [], ignoredColumns: [], fileNotes: [], fileError: "The CSV needs a header row and at least one item." };
     const headers = table[0]!.map((h) => h.trim());
     if (!headers.some((h) => ALIASES[headerKey(h)] === "title") || !headers.some((h) => ALIASES[headerKey(h)] === "type")) {
-      return { rows: [], ignoredColumns: [], fileError: "The CSV needs at least “type” and “title” columns. Download the template to see the format." };
+      return { rows: [], ignoredColumns: [], fileNotes: [], fileError: "The CSV needs at least “type” and “title” columns. Download the template to see the format." };
     }
     records = table.slice(1).map((cells) => Object.fromEntries(headers.map((h, i) => [h, cells[i] ?? ""])));
   }
 
-  if (records.length === 0) return { rows: [], ignoredColumns: [], fileError: "No items found in the file." };
+  if (records.length === 0) return { rows: [], ignoredColumns: [], fileNotes: [], fileError: "No items found in the file." };
   if (records.length > IMPORT_LIMITS.maxRows) {
-    return { rows: [], ignoredColumns: [], fileError: `The file has ${records.length.toLocaleString()} items. The limit is ${IMPORT_LIMITS.maxRows.toLocaleString()} per import; split it into smaller files.` };
+    return { rows: [], ignoredColumns: [], fileNotes: [], fileError: `The file has ${records.length.toLocaleString()} items. The limit is ${IMPORT_LIMITS.maxRows.toLocaleString()} per import; split it into smaller files.` };
   }
 
-  const rows = records.map((r, i) => normalizeRecord(mapRecord(r, ignored), i, now));
-  return { rows, ignoredColumns: [...ignored], fileError: null };
+  const rows = records.map((r, i) => normalizeRecord(mapRecord(r, ignored), i, now, ignored));
+  const entryTotal = rows.reduce((n, r) => n + r.reasoning.length, 0);
+  if (entryTotal > REASONING_LIMITS.perFile) {
+    return { rows: [], ignoredColumns: [], fileNotes: [], fileError: `The file has ${entryTotal.toLocaleString()} reasoning entries. The limit is ${REASONING_LIMITS.perFile.toLocaleString()} per import; split it into smaller files.` };
+  }
+  return { rows, ignoredColumns: [...ignored], fileNotes, fileError: null };
 }
