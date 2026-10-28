@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { ItemCard } from "@/components/ItemCard";
+import { getTimeCtx } from "@/lib/time-server";
 import { linkCounts, loadCategories, tagsByItem } from "@/lib/items";
 import {
   ITEM_SUMMARY_COLUMNS,
@@ -33,6 +34,7 @@ export default async function LibraryPage({ searchParams }: { searchParams: Prom
   const sort: SortKey = p.sort ?? "newest";
 
   const supabase = await createClient();
+  const time = await getTimeCtx();
   const categories = await loadCategories(supabase);
   const cat = p.cat === "none" || categories.some((c) => c.id === p.cat) ? p.cat : undefined;
 
@@ -172,6 +174,7 @@ export default async function LibraryPage({ searchParams }: { searchParams: Prom
             {items.map((item) => (
               <li key={item.id}>
                 <ItemCard
+                  time={time}
                   item={item}
                   linkCount={counts.get(item.id)}
                   categoryName={item.category_id ? categoryName.get(item.category_id) : undefined}

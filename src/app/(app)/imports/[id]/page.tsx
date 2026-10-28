@@ -3,13 +3,14 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
+import { formatDateTime } from "@/lib/time";
+import { getTimeCtx } from "@/lib/time-server";
 import { TypeBadge } from "@/components/ItemBadges";
 import type { UndoReport } from "../actions";
 import { UndoForm } from "./UndoForm";
 
 export const metadata: Metadata = { title: "Import" };
 
-const dateFmt = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" });
 
 const REASON_LABEL: Record<string, string> = {
   edited: "edited",
@@ -24,6 +25,7 @@ export default async function ImportDetailPage({ params }: { params: Promise<{ i
   if (!z.string().uuid().safeParse(id).success) notFound();
 
   const supabase = await createClient();
+  const time = await getTimeCtx();
   const { data: imp } = await supabase
     .from("imports")
     .select("id, file_name, item_count, link_count, created_at, undone_at, removed_count, entry_count, attached_entry_count, entries_removed")
@@ -40,7 +42,7 @@ export default async function ImportDetailPage({ params }: { params: Promise<{ i
       <Link href="/imports" className="mb-4 inline-block text-sm text-muted hover:text-ink">← Import history</Link>
       <h1 className="font-serif text-2xl break-words">{imp.file_name ?? "Import"}</h1>
       <p className="mt-1 text-sm text-muted">
-        {dateFmt.format(new Date(imp.created_at as string))} · {imp.item_count} item{imp.item_count === 1 ? "" : "s"} · {imp.link_count} link{imp.link_count === 1 ? "" : "s"}
+        Imported {formatDateTime(imp.created_at as string, time)} · {imp.item_count} item{imp.item_count === 1 ? "" : "s"} · {imp.link_count} link{imp.link_count === 1 ? "" : "s"}
         {(imp.entry_count as number) > 0 &&
           ` · ${imp.entry_count} reasoning entr${imp.entry_count === 1 ? "y" : "ies"}${(imp.attached_entry_count as number) > 0 ? ` (${imp.attached_entry_count} added to existing items)` : ""}`}
       </p>
@@ -56,7 +58,7 @@ export default async function ImportDetailPage({ params }: { params: Promise<{ i
 
         {imp.undone_at ? (
           <p className="mt-2 text-sm text-muted">
-            Undone on {dateFmt.format(new Date(imp.undone_at as string))}. {imp.removed_count} item{imp.removed_count === 1 ? " was" : "s were"} removed
+            Undone {formatDateTime(imp.undone_at as string, time)}. {imp.removed_count} item{imp.removed_count === 1 ? " was" : "s were"} removed
             {(imp.entries_removed as number) > 0 && ` and ${imp.entries_removed} reasoning entr${imp.entries_removed === 1 ? "y was" : "ies were"} taken off existing items`}
             {report && report.total > 0 ? `; ${report.total} you had worked on ${report.total === 1 ? "was" : "were"} kept.` : "."}
           </p>

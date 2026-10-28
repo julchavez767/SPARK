@@ -19,6 +19,8 @@ import {
   compareReasoning,
 } from "@/lib/types";
 import { loadCategories, tagsByItem } from "@/lib/items";
+import { formatCalendarDay, formatDateTime, isCalendarDayStamp } from "@/lib/time";
+import { getTimeCtx } from "@/lib/time-server";
 import { Details } from "./Details";
 import { RelatedForms, RenameTitle } from "./RelatedForms";
 import { ReasoningLog } from "./ReasoningLog";
@@ -29,8 +31,6 @@ const HISTORY_KINDS = ["status_change", "link_removed"] as const;
 
 export const metadata: Metadata = { title: "Item" };
 
-const dateFmt = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric" });
-const dateTimeFmt = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" });
 
 type Entry = {
   id: string;
@@ -53,6 +53,7 @@ export default async function ItemPage({ params }: { params: Promise<{ id: strin
   if (!z.string().uuid().safeParse(id).success) notFound();
 
   const supabase = await createClient();
+  const time = await getTimeCtx();
   const { data: itemRow } = await supabase.from("items").select(ITEM_SUMMARY_COLUMNS).eq("id", id).maybeSingle();
   if (!itemRow) notFound();
   const item = itemRow as ItemSummary;
@@ -108,7 +109,7 @@ export default async function ItemPage({ params }: { params: Promise<{ id: strin
           sourceName={item.source_name}
           sourceUrl={item.source_url}
           origin={item.origin}
-          imported={imp ? { id: imp.id, fileName: imp.file_name, date: dateFmt.format(new Date(imp.created_at)) } : null}
+          imported={imp ? { id: imp.id, fileName: imp.file_name, date: formatDateTime(imp.created_at, time) } : null}
         />
       </section>
 
@@ -128,7 +129,7 @@ export default async function ItemPage({ params }: { params: Promise<{ id: strin
         <p className="mb-3 mt-1 text-sm text-muted">
           Capture what you’re thinking, questioning, deciding, and learning as your idea evolves.
         </p>
-        <ReasoningLog itemId={item.id} entries={reasoning} />
+        <ReasoningLog itemId={item.id} entries={reasoning} time={time} />
       </section>
 
       {/* Everything linked to this item, grouped by type */}
@@ -175,15 +176,33 @@ export default async function ItemPage({ params }: { params: Promise<{ id: strin
           <ul className="space-y-1.5 text-sm text-muted">
             {entries.map((e) => (
               <li key={e.id}>
-                <time dateTime={e.created_at}>{dateTimeFmt.format(new Date(e.created_at))}</time>
+                <time dateTime={e.created_at}>{formatDateTime(e.created_at, time)}</time>
                 {" · "}
                 {entryText(e)}
               </li>
             ))}
-            <li>
-              <time dateTime={item.created_at}>{dateTimeFmt.format(new Date(item.created_at))}</time>
-              {" · "}Created{item.source === "voice" ? " by dictation" : ""}
-            </li>
+            {imp ? (
+              <>
+                <li>
+                  <time dateTime={imp.created_at}>{formatDateTime(imp.created_at, time)}</time>
+                  {" · "}Imported into SPARK
+                </li>
+                {/* An original date from the file is a calendar day; a full timestamp from the file is a moment. */}
+                {Math.abs(Date.parse(item.created_at) - Date.parse(imp.created_at)) > 60_000 && (
+                  <li>
+                    <time dateTime={item.created_at}>
+                      {isCalendarDayStamp(item.created_at) ? formatCalendarDay(item.created_at) : formatDateTime(item.created_at, time)}
+                    </time>
+                    {" · "}Original date, from the import file
+                  </li>
+                )}
+              </>
+            ) : (
+              <li>
+                <time dateTime={item.created_at}>{formatDateTime(item.created_at, time)}</time>
+                {" · "}Created{item.source === "voice" ? " by dictation" : ""}
+              </li>
+            )}
           </ul>
         </section>
       )}

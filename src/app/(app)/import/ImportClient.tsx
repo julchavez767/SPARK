@@ -5,6 +5,7 @@ import { useMemo, useRef, useState, useTransition } from "react";
 import { analyzeImport, type Decision, type RowPlan } from "@/lib/import/analyze";
 import { IMPORT_LIMITS, parseImport, type ParsedFile } from "@/lib/import/normalize";
 import { AI_IMPORT_PROMPT } from "@/lib/import/prompt";
+import { formatPartialDate } from "@/lib/time";
 import { ITEM_TYPES, REASONING_LABEL, TYPE_LABEL, TYPE_PLURAL, type ItemStatus } from "@/lib/types";
 import { StatusPill, TypeBadge } from "@/components/ItemBadges";
 import { commitImport, getImportContext, type CommitResult, type ImportContext } from "./actions";
@@ -391,13 +392,6 @@ function RowNotes({ plan }: { plan: RowPlan }) {
   );
 }
 
-function entryDate(date: string | null): string {
-  if (!date) return "Date unknown";
-  const [y, m, d] = date.split("-").map(Number);
-  if (!m) return String(y);
-  const month = new Date(Date.UTC(y!, m - 1, d ?? 1)).toLocaleString("en-US", { month: "short", timeZone: "UTC" });
-  return d ? `${month} ${d}, ${y}` : `${month} ${y}`;
-}
 
 function AttachCard({ plan }: { plan: RowPlan }) {
   const target = plan.attachTo!;
@@ -423,7 +417,7 @@ function AttachCard({ plan }: { plan: RowPlan }) {
           {plan.entryPlan.map(({ entry, status }) => (
             <li key={`${entry.pos}`} className={`rounded-[10px] border border-line px-2.5 py-1.5 text-sm ${status === "logged" ? "opacity-60" : ""}`}>
               <span className="text-xs text-muted">
-                {REASONING_LABEL[entry.kind]} · {entryDate(entry.date)}
+                {REASONING_LABEL[entry.kind]} · {formatPartialDate(entry.date)}
                 {status === "logged" && " · already logged, skipped"}
               </span>
               <p className="line-clamp-3 whitespace-pre-wrap break-words">{entry.body}</p>

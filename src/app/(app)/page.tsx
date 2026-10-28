@@ -2,11 +2,13 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { CaptureBox } from "@/components/CaptureBox";
 import { ItemCard } from "@/components/ItemCard";
+import { getTimeCtx } from "@/lib/time-server";
 import { linkCounts } from "@/lib/items";
 import { ITEM_SUMMARY_COLUMNS, type ItemSummary } from "@/lib/types";
 
 export default async function CapturePage() {
   const supabase = await createClient();
+  const time = await getTimeCtx();
   const { data, error } = await supabase
     .from("items")
     .select(ITEM_SUMMARY_COLUMNS)
@@ -39,7 +41,7 @@ export default async function CapturePage() {
           <ul className="space-y-3">
             {recent.map((item) => (
               <li key={item.id}>
-                <ItemCard item={item} linkCount={counts.get(item.id)} />
+                <ItemCard item={item} linkCount={counts.get(item.id)} time={time} />
               </li>
             ))}
           </ul>

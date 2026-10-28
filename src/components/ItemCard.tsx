@@ -1,12 +1,15 @@
 import Link from "next/link";
 import type { ItemSummary, Tag } from "@/lib/types";
+import { formatCalendarDay, formatShortDate, isCalendarDayStamp, type TimeCtx } from "@/lib/time";
 import { StatusPill, TypeBadge } from "./ItemBadges";
 
-const dateFmt = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric" });
+type Props = { item: ItemSummary; linkCount?: number; categoryName?: string; tags?: Tag[]; time: TimeCtx };
 
-type Props = { item: ItemSummary; linkCount?: number; categoryName?: string; tags?: Tag[] };
-
-export function ItemCard({ item, linkCount, categoryName, tags }: Props) {
+export function ItemCard({ item, linkCount, categoryName, tags, time }: Props) {
+  // An original date from an import file is a calendar day; anything else is a moment shown in local time.
+  const dateText = item.import_id && isCalendarDayStamp(item.created_at)
+    ? formatCalendarDay(item.created_at).replace(new RegExp(`, ${new Date().getUTCFullYear()}$`), "")
+    : formatShortDate(item.created_at, time);
   // Preview skips the first line when it is already the title.
   const rest = (item.original_body ?? "").trim().split(/\r?\n/).slice(1).join(" ").trim();
   const shownTags = (tags ?? []).slice(0, 3);
@@ -32,7 +35,7 @@ export function ItemCard({ item, linkCount, categoryName, tags }: Props) {
         {item.source === "voice" && <span>Dictated</span>}
         {linkCount ? <span>{linkCount} linked</span> : null}
         <time dateTime={item.created_at} className="ml-auto">
-          {dateFmt.format(new Date(item.created_at))}
+          {dateText}
         </time>
       </div>
     </Link>
