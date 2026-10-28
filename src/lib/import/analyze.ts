@@ -1,9 +1,16 @@
 import type { ImportRow } from "./normalize";
-import type { ItemType } from "../types";
+import { entryKey, type ImportEntry } from "./reasoning";
+import type { ItemType, ReasoningKind } from "../types";
 
 export type ExistingItem = { id: string; type: ItemType; title: string };
+/** Reasoning already logged in SPARK, used so a re-import never repeats an entry. */
+export type ExistingEntry = { item_id: string; kind: string; body: string | null };
 
-export type Decision = "import" | "skip";
+/**
+ * import = create a new item; skip = leave the row out;
+ * attach = add the row's reasoning to the matching item already in SPARK, changing nothing else.
+ */
+export type Decision = "import" | "skip" | "attach";
 
 /** What a row looks like a duplicate of. */
 export type DuplicateMatch = {
@@ -15,12 +22,23 @@ export type DuplicateMatch = {
   rowLine?: number;
 };
 
+export type PlannedEntryStatus = "new" | "logged";
+
 export type RowPlan = {
   row: ImportRow;
   duplicate: DuplicateMatch | null;
   decision: Decision | null; // null = waiting for the user
   needsReview: boolean;
+  /** The row has reasoning and matches an item already in SPARK. */
+  canAttach: boolean;
+  /** Shown as a suggestion only; never applied without the user choosing it. */
+  recommended: Decision | null;
   importing: boolean;
+  attaching: boolean;
+  /** For attach: the existing item the reasoning goes to. */
+  attachTo: { id: string; title: string; type: ItemType } | null;
+  /** Each reasoning entry and whether it will be written ("new") or is already in the log ("logged"). Empty when skipped. */
+  entryPlan: { entry: ImportEntry; status: PlannedEntryStatus }[];
   linkCount: number;
   linkWarnings: string[];
 };
@@ -28,9 +46,13 @@ export type RowPlan = {
 /** A link endpoint is either a row key in this file or the id of an existing item. */
 export type PlannedLink = { a: string; b: string };
 
+/** target is a row key (new item) or the id of an existing item. */
+export type PlannedEntry = { target: string; kind: ReasoningKind; body: string; occurred_on: string | null; pos: number };
+
 export type ImportPlan = {
   rows: RowPlan[];
   links: PlannedLink[];
+  entries: PlannedEntry[];
   summary: {
     byType: Record<ItemType, number>;
     importing: number;
@@ -44,6 +66,16 @@ export type ImportPlan = {
     warnings: number;
     newCategories: string[];
     newTags: string[];
+    /** Reasoning entries written on new items. */
+    entriesOnNew: number;
+    /** Reasoning entries added to items already in SPARK. */
+    entriesAttached: number;
+    /** How many existing items receive reasoning. */
+    attachedItems: number;
+    /** Entries left out because the same entry is already in that item's log. */
+    entriesAlreadyLogged: number;
+    /** Entries not imported because their row is skipped. */
+    entriesSkippedWithRow: number;
   };
 };
 
@@ -104,17 +136,37 @@ export function analyzeImport(
   decisions: Record<string, Decision | undefined>,
   existingCategories: string[] = [],
   existingTags: string[] = [],
+  existingEntries: ExistingEntry[] = [],
 ): ImportPlan {
+  const existingById = new Map(existing.map((e) => [e.id, e]));
+
   // 1. Duplicates and decisions
   const plans: RowPlan[] = rows.map((row, i) => {
+    const base = { canAttach: false, recommended: null, attaching: false, attachTo: null, entryPlan: [], linkCount: 0, linkWarnings: [] };
     if (row.errors.length > 0) {
-      return { row, duplicate: null, decision: "skip", needsReview: false, importing: false, linkCount: 0, linkWarnings: [] };
+      return { ...base, row, duplicate: null, decision: "skip", needsReview: false, importing: false };
     }
     const duplicate = findDuplicate(row, existing, rows.slice(0, i));
-    const needsReview = duplicate !== null && duplicate.kind !== "exact";
-    const fallback: Decision | null = duplicate === null ? "import" : duplicate.kind === "exact" ? "skip" : null;
-    const decision = decisions[row.key] ?? fallback;
-    return { row, duplicate, decision, needsReview, importing: decision === "import", linkCount: 0, linkWarnings: [] };
+    const target = duplicate?.existingId ? existingById.get(duplicate.existingId) ?? null : null;
+    const canAttach = row.reasoning.length > 0 && target !== null;
+    // A match that carries reasoning always waits for an explicit choice.
+    const needsReview = duplicate !== null && (duplicate.kind !== "exact" || canAttach);
+    const fallback: Decision | null = duplicate === null ? "import" : duplicate.kind === "exact" && !canAttach ? "skip" : null;
+    const recommended: Decision | null = canAttach && duplicate!.kind === "exact" ? "attach" : null;
+    const requested = decisions[row.key];
+    const decision = requested === "attach" && !canAttach ? fallback : requested ?? fallback;
+    return {
+      ...base,
+      row,
+      duplicate,
+      decision,
+      needsReview,
+      canAttach,
+      recommended,
+      importing: decision === "import",
+      attaching: decision === "attach",
+      attachTo: decision === "attach" && target ? { id: target.id, title: target.title, type: target.type } : null,
+    };
   });
 
   const byKey = new Map(plans.map((p) => [p.row.key, p]));
@@ -177,7 +229,53 @@ export function analyzeImport(
     byKey.get(l.b)?.importing && (byKey.get(l.b)!.linkCount += 1);
   }
 
-  // 3. Summary
+  // 3. Reasoning entries
+  const logged = new Map<string, Set<string>>();
+  for (const e of existingEntries) {
+    if (!e.body) continue;
+    const set = logged.get(e.item_id) ?? new Set<string>();
+    set.add(entryKey(e.kind, e.body));
+    logged.set(e.item_id, set);
+  }
+  const entries: PlannedEntry[] = [];
+  let entriesOnNew = 0;
+  let entriesAttached = 0;
+  let entriesAlreadyLogged = 0;
+  let entriesSkippedWithRow = 0;
+  const attachedTargets = new Set<string>();
+
+  for (const p of plans) {
+    if (p.row.errors.length > 0) continue;
+    if (p.importing) {
+      // In-file repeats were already removed when the file was read.
+      for (const entry of p.row.reasoning) {
+        p.entryPlan.push({ entry, status: "new" });
+        entries.push({ target: p.row.key, kind: entry.kind, body: entry.body, occurred_on: entry.date, pos: entry.pos });
+        entriesOnNew += 1;
+      }
+    } else if (p.attaching && p.attachTo) {
+      const id = p.attachTo.id;
+      const set = logged.get(id) ?? new Set<string>();
+      logged.set(id, set); // shared, so two rows matching the same item can't add the same entry twice
+      for (const entry of p.row.reasoning) {
+        const k = entryKey(entry.kind, entry.body);
+        if (set.has(k)) {
+          p.entryPlan.push({ entry, status: "logged" });
+          entriesAlreadyLogged += 1;
+          continue;
+        }
+        set.add(k);
+        p.entryPlan.push({ entry, status: "new" });
+        entries.push({ target: id, kind: entry.kind, body: entry.body, occurred_on: entry.date, pos: entry.pos });
+        entriesAttached += 1;
+        attachedTargets.add(id);
+      }
+    } else {
+      entriesSkippedWithRow += p.row.reasoning.length;
+    }
+  }
+
+  // 4. Summary
   const importingRows = plans.filter((p) => p.importing);
   const byType: Record<ItemType, number> = { idea: 0, project: 0, system: 0 };
   for (const p of importingRows) byType[p.row.type as ItemType] += 1;
@@ -194,6 +292,7 @@ export function analyzeImport(
   return {
     rows: plans,
     links,
+    entries,
     summary: {
       byType,
       importing: importingRows.length,
@@ -207,6 +306,11 @@ export function analyzeImport(
       warnings: plans.reduce((n, p) => n + (p.row.errors.length ? 0 : p.row.warnings.length + p.linkWarnings.length), 0),
       newCategories,
       newTags,
+      entriesOnNew,
+      entriesAttached,
+      attachedItems: attachedTargets.size,
+      entriesAlreadyLogged,
+      entriesSkippedWithRow,
     },
   };
 }

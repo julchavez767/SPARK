@@ -3,13 +3,14 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
+import { formatDateTime } from "@/lib/time";
+import { getTimeCtx } from "@/lib/time-server";
 import { TypeBadge } from "@/components/ItemBadges";
 import type { UndoReport } from "../actions";
 import { UndoForm } from "./UndoForm";
 
 export const metadata: Metadata = { title: "Import" };
 
-const dateFmt = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" });
 
 const REASON_LABEL: Record<string, string> = {
   edited: "edited",
@@ -24,9 +25,10 @@ export default async function ImportDetailPage({ params }: { params: Promise<{ i
   if (!z.string().uuid().safeParse(id).success) notFound();
 
   const supabase = await createClient();
+  const time = await getTimeCtx();
   const { data: imp } = await supabase
     .from("imports")
-    .select("id, file_name, item_count, link_count, created_at, undone_at, removed_count")
+    .select("id, file_name, item_count, link_count, created_at, undone_at, removed_count, entry_count, attached_entry_count, entries_removed")
     .eq("id", id)
     .maybeSingle();
   if (!imp) notFound();
@@ -40,7 +42,9 @@ export default async function ImportDetailPage({ params }: { params: Promise<{ i
       <Link href="/imports" className="mb-4 inline-block text-sm text-muted hover:text-ink">← Import history</Link>
       <h1 className="font-serif text-2xl break-words">{imp.file_name ?? "Import"}</h1>
       <p className="mt-1 text-sm text-muted">
-        {dateFmt.format(new Date(imp.created_at as string))} · {imp.item_count} item{imp.item_count === 1 ? "" : "s"} · {imp.link_count} link{imp.link_count === 1 ? "" : "s"}
+        Imported {formatDateTime(imp.created_at as string, time)} · {imp.item_count} item{imp.item_count === 1 ? "" : "s"} · {imp.link_count} link{imp.link_count === 1 ? "" : "s"}
+        {(imp.entry_count as number) > 0 &&
+          ` · ${imp.entry_count} reasoning entr${imp.entry_count === 1 ? "y" : "ies"}${(imp.attached_entry_count as number) > 0 ? ` (${imp.attached_entry_count} added to existing items)` : ""}`}
       </p>
 
       <div className="mt-4 flex flex-wrap gap-2">
@@ -54,18 +58,24 @@ export default async function ImportDetailPage({ params }: { params: Promise<{ i
 
         {imp.undone_at ? (
           <p className="mt-2 text-sm text-muted">
-            Undone on {dateFmt.format(new Date(imp.undone_at as string))}. {imp.removed_count} item{imp.removed_count === 1 ? " was" : "s were"} removed
+            Undone {formatDateTime(imp.undone_at as string, time)}. {imp.removed_count} item{imp.removed_count === 1 ? " was" : "s were"} removed
+            {(imp.entries_removed as number) > 0 && ` and ${imp.entries_removed} reasoning entr${imp.entries_removed === 1 ? "y was" : "ies were"} taken off existing items`}
             {report && report.total > 0 ? `; ${report.total} you had worked on ${report.total === 1 ? "was" : "were"} kept.` : "."}
           </p>
         ) : !report ? (
           <p className="mt-2 text-sm text-ember">Couldn’t check this import right now. Refresh to try again.</p>
-        ) : report.total === 0 ? (
+        ) : report.total === 0 && !report.entries_attached ? (
           <p className="mt-2 text-sm text-muted">There’s nothing left from this import.</p>
         ) : (
           <>
             <p className="mt-2 text-sm text-muted">
-              Undo removes only items from this import that haven’t been touched since. Anything you’ve edited, linked, tagged or added notes to is kept. Items that were already in SPARK are never affected.
+              Undo removes only items from this import that haven’t been touched since. Anything you’ve edited, linked, tagged or added notes to is kept. Items that were already in SPARK are never removed.
             </p>
+            {(report.entries_attached ?? 0) > 0 && (
+              <p className="mt-2 text-sm text-muted">
+                It also takes the {report.entries_attached} reasoning entr{report.entries_attached === 1 ? "y" : "ies"} this import added to {report.attached_items} existing item{report.attached_items === 1 ? "" : "s"} back out. Entries you typed yourself, entries from other imports and History are never touched, and nothing else about those items changes.
+              </p>
+            )}
 
             {report.protected.length > 0 && (
               <div className="mt-4">
@@ -83,10 +93,10 @@ export default async function ImportDetailPage({ params }: { params: Promise<{ i
             )}
 
             <div className="mt-4">
-              {report.removable === 0 ? (
+              {report.removable === 0 && !report.entries_attached ? (
                 <p className="text-sm text-muted">Every remaining item has been worked on, so there’s nothing to remove.</p>
               ) : (
-                <UndoForm importId={id} removable={report.removable} kept={report.protected.length} />
+                <UndoForm importId={id} removable={report.removable} kept={report.protected.length} entries={report.entries_attached ?? 0} />
               )}
             </div>
           </>

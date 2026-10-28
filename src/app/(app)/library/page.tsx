@@ -3,6 +3,7 @@ import Link from "next/link";
 import { cookies } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
 import { linkSummaries, loadCategories, reasoningCounts, tagsByItem } from "@/lib/items";
+import { getTimeCtx } from "@/lib/time-server";
 import {
   ITEM_SUMMARY_COLUMNS,
   ITEM_TYPES,
@@ -42,6 +43,7 @@ export default async function LibraryPage({ searchParams }: { searchParams: Prom
   const sort: SortKey = p.sort ?? "newest";
 
   const supabase = await createClient();
+  const time = await getTimeCtx();
   const categories = await loadCategories(supabase);
   const cat = p.cat === "none" || categories.some((c) => c.id === p.cat) ? p.cat : undefined;
 
@@ -111,6 +113,13 @@ export default async function LibraryPage({ searchParams }: { searchParams: Prom
     reasoningCounts(supabase, ids),
   ]);
   const categoryName = new Map(categories.map((c) => [c.id, c.name]));
+  // Imported items were "added" when their import ran, whatever original date the file gave.
+  const importIds = Array.from(new Set(items.map((i) => i.import_id).filter((x): x is string => Boolean(x))));
+  const { data: importRows } = importIds.length
+    ? await supabase.from("imports").select("id, created_at").in("id", importIds)
+    : { data: [] as { id: string; created_at: string }[] };
+  const importedAt = new Map((importRows ?? []).map((r) => [r.id as string, r.created_at as string]));
+  const addedAt = (item: ItemSummary) => (item.import_id && importedAt.get(item.import_id)) || item.created_at;
   const shownTotal = type ? inTile(type).length : allCount;
 
   // Builds a library URL from the current filters with some changed.
@@ -247,6 +256,8 @@ export default async function LibraryPage({ searchParams }: { searchParams: Prom
                     tags={tagMap.get(item.id)}
                     links={links.get(item.id)}
                     reasoning={reasoning.get(item.id)}
+                    addedAt={addedAt(item)}
+                    time={time}
                   />
                 </li>
               ))}
@@ -260,6 +271,8 @@ export default async function LibraryPage({ searchParams }: { searchParams: Prom
                     categoryName={item.category_id ? categoryName.get(item.category_id) : undefined}
                     links={links.get(item.id)}
                     reasoning={reasoning.get(item.id)}
+                    addedAt={addedAt(item)}
+                    time={time}
                   />
                 </li>
               ))}

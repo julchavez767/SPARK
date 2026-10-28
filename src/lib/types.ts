@@ -94,7 +94,26 @@ export function isReasoningKind(value: unknown): value is ReasoningKind {
   return typeof value === "string" && (REASONING_KINDS as readonly string[]).includes(value);
 }
 
-export type ReasoningEntry = { id: string; kind: ReasoningKind; body: string; created_at: string };
+export type ReasoningEntry = {
+  id: string;
+  kind: ReasoningKind;
+  body: string;
+  /** When SPARK recorded it (for imported entries: the import time). */
+  created_at: string;
+  /** Original date from an import, as precise as the source: "YYYY", "YYYY-MM" or "YYYY-MM-DD". */
+  occurred_on: string | null;
+  import_id: string | null;
+  data: { pos?: number } | null;
+};
+
+/** Newest first, by original date where known, otherwise by when it was recorded; file order within an import. */
+export function compareReasoning(a: ReasoningEntry, b: ReasoningEntry): number {
+  const ka = a.occurred_on ?? a.created_at;
+  const kb = b.occurred_on ?? b.created_at;
+  if (ka !== kb) return ka < kb ? 1 : -1;
+  if (a.created_at !== b.created_at) return a.created_at < b.created_at ? 1 : -1;
+  return (b.data?.pos ?? 0) - (a.data?.pos ?? 0);
+}
 
 export const SORTS = ["newest", "oldest", "updated", "title"] as const;
 export type SortKey = (typeof SORTS)[number];

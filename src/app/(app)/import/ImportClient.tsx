@@ -5,7 +5,8 @@ import { useMemo, useRef, useState, useTransition } from "react";
 import { analyzeImport, type Decision, type RowPlan } from "@/lib/import/analyze";
 import { IMPORT_LIMITS, parseImport, type ParsedFile } from "@/lib/import/normalize";
 import { AI_IMPORT_PROMPT } from "@/lib/import/prompt";
-import { ITEM_TYPES, TYPE_LABEL, TYPE_PLURAL, type ItemStatus } from "@/lib/types";
+import { formatPartialDate } from "@/lib/time";
+import { ITEM_TYPES, REASONING_LABEL, TYPE_LABEL, TYPE_PLURAL, type ItemStatus } from "@/lib/types";
 import { StatusPill, TypeBadge } from "@/components/ItemBadges";
 import { commitImport, getImportContext, type CommitResult, type ImportContext } from "./actions";
 
@@ -47,7 +48,10 @@ export function ImportClient() {
   }
 
   const plan = useMemo(
-    () => (loaded ? analyzeImport(loaded.parsed.rows, loaded.context.existing, decisions, loaded.context.categories, loaded.context.tags) : null),
+    () =>
+      loaded
+        ? analyzeImport(loaded.parsed.rows, loaded.context.existing, decisions, loaded.context.categories, loaded.context.tags, loaded.context.entries)
+        : null,
     [loaded, decisions],
   );
 
@@ -67,7 +71,10 @@ export function ImportClient() {
 
   const s = plan.summary;
   const review = plan.rows.filter((p) => p.needsReview);
-  const dupes = plan.rows.filter((p) => p.duplicate?.kind === "exact");
+  const dupes = plan.rows.filter((p) => p.duplicate?.kind === "exact" && !p.needsReview);
+  const attachments = plan.rows.filter((p) => p.attaching && p.attachTo);
+  const nothingToDo = s.importing === 0 && plan.entries.length === 0;
+  const itemsSkipped = plan.rows.filter((p) => p.row.errors.length === 0 && p.decision === "skip").length;
   const errored = plan.rows.filter((p) => p.row.errors.length > 0);
   const ready = plan.rows.filter((p) => p.row.errors.length === 0 && !p.duplicate);
   const setDecision = (key: string, d: Decision) => setDecisions((prev) => ({ ...prev, [key]: d }));
@@ -81,15 +88,23 @@ export function ImportClient() {
 
       {/* Summary */}
       <section aria-label="Summary" className="mb-6 rounded-[14px] border border-line bg-surface p-4">
-        <p className="font-serif text-xl">{s.importing} item{s.importing === 1 ? "" : "s"} ready to import</p>
+        <p className="font-serif text-xl">{s.importing} new item{s.importing === 1 ? "" : "s"} ready to import</p>
         <p className="mt-1 text-sm text-muted">
           {ITEM_TYPES.map((t) => `${s.byType[t]} ${(s.byType[t] === 1 ? TYPE_LABEL[t] : TYPE_PLURAL[t]).toLowerCase()}`).join(" · ")}
-          {" · "}
-          {s.links} link{s.links === 1 ? "" : "s"}
-          {s.linksToExisting > 0 && ` (${s.linksToExisting} to items already in SPARK)`}
         </p>
+        <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 text-sm sm:grid-cols-3">
+          <Stat label="New items" value={s.importing} />
+          <Stat label="Reasoning on new items" value={s.entriesOnNew} />
+          <Stat label={`Reasoning added to existing items${s.attachedItems ? ` (${s.attachedItems})` : ""}`} value={s.entriesAttached} />
+          <Stat label="Duplicate items skipped" value={itemsSkipped} />
+          <Stat label="Entries already logged, skipped" value={s.entriesAlreadyLogged} />
+          <Stat label={`Links${s.linksToExisting ? ` (${s.linksToExisting} to existing)` : ""}`} value={s.links} />
+        </dl>
+        {s.entriesSkippedWithRow > 0 && (
+          <p className="mt-2 text-xs text-muted">{s.entriesSkippedWithRow} reasoning entr{s.entriesSkippedWithRow === 1 ? "y belongs" : "ies belong"} to rows you’re skipping or that can’t import, so {s.entriesSkippedWithRow === 1 ? "it isn’t" : "they aren’t"} included.</p>
+        )}
         <div className="mt-3 flex flex-wrap gap-2 text-xs">
-          {s.undecided > 0 && <Chip tone="alert">{s.undecided} to review</Chip>}
+          {s.undecided > 0 && <Chip tone="alert">{s.undecided} to choose</Chip>}
           {s.exactDuplicates > 0 && <Chip>{s.exactDuplicates} duplicate{s.exactDuplicates === 1 ? "" : "s"}</Chip>}
           {s.errors > 0 && <Chip>{s.errors} can’t import</Chip>}
           {s.warnings > 0 && <Chip>{s.warnings} note{s.warnings === 1 ? "" : "s"}</Chip>}
@@ -97,18 +112,43 @@ export function ImportClient() {
           {s.newTags.length > 0 && <Chip>{s.newTags.length} new tag{s.newTags.length === 1 ? "" : "s"}</Chip>}
         </div>
         {loaded.parsed.ignoredColumns.length > 0 && (
-          <p className="mt-3 text-xs text-muted">Ignored columns: {loaded.parsed.ignoredColumns.join(", ")}</p>
+          <p className="mt-3 text-xs text-muted">Ignored fields: {loaded.parsed.ignoredColumns.join(", ")}</p>
         )}
+        {loaded.parsed.fileNotes.map((n) => (
+          <p key={n} className="mt-2 text-xs text-[#a15c00] dark:text-[#e6a23c]">{n}</p>
+        ))}
       </section>
 
       {review.length > 0 && (
-        <Section title="Possible duplicates" hint="These look like something you already have. Choose for each one.">
+        <Section title="Matches to choose" hint="These match something you already have. Nothing is chosen for you: pick an action for each one.">
           {review.map((p) => (
             <RowCard key={p.row.key} plan={p} highlight={p.decision === null}>
               <MatchLine plan={p} />
-              <DecisionToggle value={p.decision} onChange={(d) => setDecision(p.row.key, d)} />
+              {p.row.reasoning.length > 0 && (
+                <p className="mt-1 text-xs text-muted">
+                  {p.row.reasoning.length} reasoning entr{p.row.reasoning.length === 1 ? "y" : "ies"} in the file
+                  {p.attaching && p.entryPlan.some((e) => e.status === "logged") &&
+                    ` · ${p.entryPlan.filter((e) => e.status === "logged").length} already logged`}
+                </p>
+              )}
+              <DecisionToggle
+                value={p.decision}
+                canAttach={p.canAttach}
+                recommended={p.recommended}
+                onChange={(d) => setDecision(p.row.key, d)}
+              />
+              {p.attaching && (
+                <p className="mt-2 text-xs text-muted">Only the reasoning is added. The existing item’s title, description, status, tags and links stay as they are.</p>
+              )}
+              <RowNotes plan={p} />
             </RowCard>
           ))}
+        </Section>
+      )}
+
+      {attachments.length > 0 && (
+        <Section title={`Reasoning to add to existing items (${s.entriesAttached})`} hint="Each entry below goes into the Reasoning Log of the item named. Entries already in that log are skipped.">
+          {attachments.map((p) => <AttachCard key={p.row.key} plan={p} />)}
         </Section>
       )}
 
@@ -117,7 +157,7 @@ export function ImportClient() {
           {dupes.map((p) => (
             <RowCard key={p.row.key} plan={p}>
               <MatchLine plan={p} />
-              <DecisionToggle value={p.decision} onChange={(d) => setDecision(p.row.key, d)} />
+              <DecisionToggle value={p.decision} canAttach={false} recommended={null} onChange={(d) => setDecision(p.row.key, d)} />
             </RowCard>
           ))}
         </Section>
@@ -150,18 +190,24 @@ export function ImportClient() {
             {result && !result.ok ? (
               <span className="text-ember">{result.error}</span>
             ) : s.undecided > 0 ? (
-              `Review ${s.undecided} possible duplicate${s.undecided === 1 ? "" : "s"} to continue.`
+              `Choose an action for ${s.undecided} matched item${s.undecided === 1 ? "" : "s"} to continue.`
+            ) : nothingToDo ? (
+              "Nothing to import with these choices."
             ) : (
-              "Nothing is saved until you confirm. Existing items are never changed."
+              "Nothing is saved until you confirm. Existing items’ details are never changed."
             )}
           </p>
           <button
             type="button"
             onClick={confirm}
-            disabled={committing || s.undecided > 0 || s.importing === 0}
+            disabled={committing || s.undecided > 0 || nothingToDo}
             className="h-11 shrink-0 rounded-full bg-ember px-5 text-sm font-medium text-on-ember disabled:opacity-40"
           >
-            {committing ? "Importing…" : `Import ${s.importing}`}
+            {committing
+              ? "Importing…"
+              : s.importing > 0
+                ? `Import ${s.importing}${plan.entries.length ? ` + ${plan.entries.length} entr${plan.entries.length === 1 ? "y" : "ies"}` : ""}`
+                : `Add ${plan.entries.length} entr${plan.entries.length === 1 ? "y" : "ies"}`}
           </button>
         </div>
       </div>
@@ -232,6 +278,9 @@ function Choose({ onLoad, error, loading }: { onLoad: (text: string, name: strin
         <p className="mt-1 text-sm text-muted">
           Required: <b>type</b> (idea, project or system) and <b>title</b>. Optional: description, status, category, tags, ref, related, source, source_url, origin, created.
         </p>
+        <p className="mt-2 text-sm text-muted">
+          JSON files can also carry each item’s <b>reasoning</b>: a list of entries with a type (note, hypothesis, challenge, decision or lesson), the text, and the original date only if you know it. An item that matches one you already have can have its reasoning added to the existing item.
+        </p>
         <div className="mt-3 flex flex-wrap gap-2">
           <a href="/spark-import-template.csv" download className="rounded-full border border-line px-3 py-1.5 text-sm hover:border-ink">CSV template</a>
           <a href="/spark-import-template.json" download className="rounded-full border border-line px-3 py-1.5 text-sm hover:border-ink">JSON template</a>
@@ -240,7 +289,7 @@ function Choose({ onLoad, error, loading }: { onLoad: (text: string, name: strin
 
       <details className="rounded-[14px] border border-line bg-surface p-4">
         <summary className="cursor-pointer font-medium">Have ChatGPT or Claude build the file</summary>
-        <p className="mt-2 text-sm text-muted">Paste this into the conversation that has your ideas, then save its CSV as a file or paste it here.</p>
+        <p className="mt-2 text-sm text-muted">Paste this into the conversation that has your ideas, then save its JSON as a file or paste it here.</p>
         <pre className="mt-3 max-h-64 overflow-auto whitespace-pre-wrap rounded-[10px] bg-bg p-3 text-xs leading-relaxed">{AI_IMPORT_PROMPT}</pre>
         <button type="button" onClick={copyPrompt} className="mt-3 h-10 rounded-full border border-line px-4 text-sm hover:border-ink">
           {copied ? "Copied" : "Copy instructions"}
@@ -302,21 +351,89 @@ function MatchLine({ plan }: { plan: RowPlan }) {
   );
 }
 
-function DecisionToggle({ value, onChange }: { value: Decision | null; onChange: (d: Decision) => void }) {
+function DecisionToggle({
+  value,
+  canAttach,
+  recommended,
+  onChange,
+}: {
+  value: Decision | null;
+  canAttach: boolean;
+  recommended: Decision | null;
+  onChange: (d: Decision) => void;
+}) {
   const btn = (d: Decision, label: string) => (
     <button
       type="button"
       aria-pressed={value === d}
       onClick={() => onChange(d)}
-      className={`h-9 flex-1 rounded-full text-sm ${value === d ? "bg-ink font-medium text-bg" : "text-muted hover:text-ink"}`}
+      className={`min-h-9 flex-1 rounded-[18px] px-2 py-1 text-sm leading-tight ${value === d ? "bg-ink font-medium text-bg" : "text-muted hover:text-ink"}`}
     >
       {label}
+      {recommended === d && <span className={`block text-[10px] uppercase tracking-wide ${value === d ? "text-bg/70" : "text-ember"}`}>Recommended</span>}
     </button>
   );
   return (
-    <div className="mt-2 flex gap-1 rounded-full border border-line p-1" role="group" aria-label="Import or skip">
+    <div className="mt-2 flex gap-1 rounded-[22px] border border-line p-1" role="group" aria-label="Choose an action">
+      {canAttach && btn("attach", "Add reasoning to existing")}
       {btn("import", "Import as new")}
       {btn("skip", "Skip")}
+    </div>
+  );
+}
+
+function RowNotes({ plan }: { plan: RowPlan }) {
+  const notes = plan.row.warnings;
+  if (notes.length === 0) return null;
+  return (
+    <ul className="mt-2 space-y-0.5 text-xs text-[#a15c00] dark:text-[#e6a23c]">
+      {notes.map((n) => <li key={n}>{n}</li>)}
+    </ul>
+  );
+}
+
+
+function AttachCard({ plan }: { plan: RowPlan }) {
+  const target = plan.attachTo!;
+  const fresh = plan.entryPlan.filter((e) => e.status === "new").length;
+  const logged = plan.entryPlan.length - fresh;
+  return (
+    <div className="rounded-[14px] border border-line bg-surface p-3">
+      <div className="flex items-center gap-2">
+        <TypeBadge type={target.type} />
+        <span className="ml-auto text-xs text-muted">From row {plan.row.line}</span>
+      </div>
+      <p className="mt-1 font-serif text-[16px] leading-snug">
+        {target.title}{" "}
+        <Link href={`/items/${target.id}`} target="_blank" className="font-sans text-sm text-muted underline underline-offset-2">open</Link>
+      </p>
+      <p className="mt-0.5 text-xs text-muted">
+        Already in SPARK · {fresh} new entr{fresh === 1 ? "y" : "ies"}
+        {logged > 0 && ` · ${logged} already logged`}
+      </p>
+      <details className="mt-2">
+        <summary className="cursor-pointer text-sm text-muted hover:text-ink">Show entries</summary>
+        <ul className="mt-2 space-y-1.5">
+          {plan.entryPlan.map(({ entry, status }) => (
+            <li key={`${entry.pos}`} className={`rounded-[10px] border border-line px-2.5 py-1.5 text-sm ${status === "logged" ? "opacity-60" : ""}`}>
+              <span className="text-xs text-muted">
+                {REASONING_LABEL[entry.kind]} · {formatPartialDate(entry.date)}
+                {status === "logged" && " · already logged, skipped"}
+              </span>
+              <p className="line-clamp-3 whitespace-pre-wrap break-words">{entry.body}</p>
+            </li>
+          ))}
+        </ul>
+      </details>
+    </div>
+  );
+}
+
+function Stat({ label, value }: { label: string; value: number }) {
+  return (
+    <div>
+      <dt className="text-xs text-muted">{label}</dt>
+      <dd className="font-medium tabular-nums">{value.toLocaleString()}</dd>
     </div>
   );
 }
@@ -337,6 +454,7 @@ function ReadyRow({ plan }: { plan: RowPlan }) {
           row.category,
           row.tags.length ? row.tags.map((t) => `#${t}`).join(" ") : null,
           plan.linkCount ? `${plan.linkCount} link${plan.linkCount === 1 ? "" : "s"}` : null,
+          row.reasoning.length ? `${row.reasoning.length} reasoning entr${row.reasoning.length === 1 ? "y" : "ies"}` : null,
           row.sourceName,
         ]
           .filter(Boolean)
@@ -357,7 +475,12 @@ function Done({ result, onAnother }: { result: Extract<CommitResult, { ok: true 
   return (
     <div className="rounded-[14px] border border-line bg-surface p-6 text-center">
       <p className="font-serif text-2xl">Imported {result.items} item{result.items === 1 ? "" : "s"}</p>
-      <p className="mt-1 text-sm text-muted">and {result.links} link{result.links === 1 ? "" : "s"}. You can undo this import from its history page.</p>
+      <p className="mt-1 text-sm text-muted">
+        {result.links} link{result.links === 1 ? "" : "s"} · {result.entriesOnNew} reasoning entr{result.entriesOnNew === 1 ? "y" : "ies"} on new items
+        {" · "}{result.entriesAttached} added to existing items
+        {result.entriesAlreadyLogged > 0 && ` · ${result.entriesAlreadyLogged} already logged, skipped`}
+      </p>
+      <p className="mt-1 text-sm text-muted">You can undo this import from its history page.</p>
       <div className="mt-5 flex flex-wrap justify-center gap-2">
         <Link href={`/library?import=${result.importId}`} className="h-11 rounded-full bg-ember px-5 text-sm font-medium leading-[2.75rem] text-on-ember">View imported items</Link>
         <Link href={`/imports/${result.importId}`} className="h-11 rounded-full border border-line px-5 text-sm leading-[2.75rem]">Import details</Link>

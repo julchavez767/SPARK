@@ -9,6 +9,7 @@ import {
   type ReasoningEntry,
   type ReasoningKind,
 } from "@/lib/types";
+import { formatDate, formatDateTime, formatPartialDate, type TimeCtx } from "@/lib/time";
 
 // Each type gets a quiet colour so a scan of the log shows its shape.
 const KIND_STYLE: Record<ReasoningKind, string> = {
@@ -19,11 +20,32 @@ const KIND_STYLE: Record<ReasoningKind, string> = {
   lesson: "bg-[#7c3aed]/12 text-[#7c3aed] dark:text-[#c4a7f5]",
 };
 
-const dateFmt = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" });
+/**
+ * Typed entries show when they were written, in local time. Imported entries
+ * show their original date only as precise as the source ("Sep 2025"), or
+ * "Date unknown", plus when they were imported, so the import time is never
+ * passed off as the date the thought was formed.
+ */
+function EntryDate({ e, time }: { e: ReasoningEntry; time: TimeCtx }) {
+  if (!e.import_id && !e.occurred_on) {
+    return <time dateTime={e.created_at} className="text-xs text-muted">{formatDateTime(e.created_at, time)}</time>;
+  }
+  return (
+    <span className="text-xs text-muted">
+      {e.occurred_on ? <time dateTime={e.occurred_on}>{formatPartialDate(e.occurred_on)}</time> : "Date unknown"}
+      {e.import_id && (
+        <>
+          {" · imported "}
+          <time dateTime={e.created_at}>{formatDate(e.created_at, time)}</time>
+        </>
+      )}
+    </span>
+  );
+}
 
 const initial: ReasoningState = {};
 
-export function ReasoningLog({ itemId, entries }: { itemId: string; entries: ReasoningEntry[] }) {
+export function ReasoningLog({ itemId, entries, time }: { itemId: string; entries: ReasoningEntry[]; time: TimeCtx }) {
   const [state, action, pending] = useActionState(addReasoning, initial);
   const [kind, setKind] = useState<ReasoningKind>("note");
   const [text, setText] = useState("");
@@ -149,9 +171,7 @@ export function ReasoningLog({ itemId, entries }: { itemId: string; entries: Rea
                 <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${KIND_STYLE[e.kind]}`}>
                   {REASONING_LABEL[e.kind]}
                 </span>
-                <time dateTime={e.created_at} className="text-xs text-muted">
-                  {dateFmt.format(new Date(e.created_at))}
-                </time>
+                <EntryDate e={e} time={time} />
               </div>
               <p className="whitespace-pre-wrap break-words text-[15px] leading-relaxed">{e.body}</p>
             </li>

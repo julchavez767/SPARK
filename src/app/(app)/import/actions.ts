@@ -3,14 +3,16 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
-import { analyzeImport, type ExistingItem } from "@/lib/import/analyze";
+import { analyzeImport, type ExistingEntry, type ExistingItem } from "@/lib/import/analyze";
 import { IMPORT_LIMITS, parseImport } from "@/lib/import/normalize";
-import type { ItemType } from "@/lib/types";
+import { REASONING_KINDS, type ItemType } from "@/lib/types";
 
 export type ImportContext = {
   existing: ExistingItem[];
   categories: string[];
   tags: string[];
+  /** Reasoning already logged, so the preview can mark entries that are already there. */
+  entries: ExistingEntry[];
 };
 
 type Client = Awaited<ReturnType<typeof createClient>>;
@@ -28,12 +30,16 @@ async function allRows<T>(fetchPage: (from: number, to: number) => PromiseLike<{
 }
 
 async function loadContext(supabase: Client): Promise<ImportContext> {
-  const [items, categories, tags] = await Promise.all([
+  const [items, categories, tags, entries] = await Promise.all([
     allRows<{ id: string; type: ItemType; title: string }>((a, b) => supabase.from("items").select("id, type, title").order("created_at").range(a, b)),
     allRows<{ name: string }>((a, b) => supabase.from("categories").select("name").range(a, b)),
     allRows<{ name: string }>((a, b) => supabase.from("tags").select("name").range(a, b)),
+    allRows<ExistingEntry>(
+      (a, b) => supabase.from("item_entries").select("item_id, kind, body").in("kind", [...REASONING_KINDS]).order("created_at").order("id").range(a, b),
+      100000,
+    ),
   ]);
-  return { existing: items, categories: categories.map((c) => c.name), tags: tags.map((t) => t.name) };
+  return { existing: items, categories: categories.map((c) => c.name), tags: tags.map((t) => t.name), entries };
 }
 
 /** What the browser needs to preview an import: titles to check duplicates against. */
@@ -51,18 +57,26 @@ export async function getImportContext(): Promise<ImportContext | { error: strin
 const commitSchema = z.object({
   text: z.string().min(1).max(IMPORT_LIMITS.maxFileBytes),
   fileName: z.string().max(200).default(""),
-  decisions: z.record(z.string().regex(/^r\d{1,4}$/), z.enum(["import", "skip"])),
+  decisions: z.record(z.string().regex(/^r\d{1,4}$/), z.enum(["import", "skip", "attach"])),
 });
 
 export type CommitResult =
-  | { ok: true; importId: string; items: number; links: number }
+  | {
+      ok: true;
+      importId: string;
+      items: number;
+      links: number;
+      entriesOnNew: number;
+      entriesAttached: number;
+      entriesAlreadyLogged: number;
+    }
   | { ok: false; error: string };
 
 /**
  * Re-reads and re-checks the file on the server, then writes it in one
  * transaction. Nothing from the browser's preview is trusted.
  */
-export async function commitImport(input: { text: string; fileName: string; decisions: Record<string, "import" | "skip"> }): Promise<CommitResult> {
+export async function commitImport(input: { text: string; fileName: string; decisions: Record<string, "import" | "skip" | "attach"> }): Promise<CommitResult> {
   const parsed = commitSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: "That file couldn’t be read. Choose it again." };
 
@@ -80,11 +94,11 @@ export async function commitImport(input: { text: string; fileName: string; deci
     return { ok: false, error: "Couldn’t check for duplicates. Nothing was imported. Try again." };
   }
 
-  const plan = analyzeImport(file.rows, context.existing, parsed.data.decisions, context.categories, context.tags);
+  const plan = analyzeImport(file.rows, context.existing, parsed.data.decisions, context.categories, context.tags, context.entries);
   if (plan.summary.undecided > 0) {
-    return { ok: false, error: `Review ${plan.summary.undecided} possible duplicate${plan.summary.undecided === 1 ? "" : "s"} first.` };
+    return { ok: false, error: `Choose what to do with ${plan.summary.undecided} matched item${plan.summary.undecided === 1 ? "" : "s"} first.` };
   }
-  if (plan.summary.importing === 0) return { ok: false, error: "Nothing is selected to import." };
+  if (plan.summary.importing === 0 && plan.entries.length === 0) return { ok: false, error: "Nothing is selected to import." };
 
   const items = plan.rows
     .filter((p) => p.importing)
@@ -106,6 +120,7 @@ export async function commitImport(input: { text: string; fileName: string; deci
     p_file_name: parsed.data.fileName || "Pasted text",
     p_items: items,
     p_links: plan.links,
+    p_entries: plan.entries,
   });
 
   if (error || !data) {
@@ -113,9 +128,25 @@ export async function commitImport(input: { text: string; fileName: string; deci
     return { ok: false, error: "The import didn’t go through, and nothing was saved. Try again." };
   }
 
-  const result = data as { import_id: string; items: number; links: number };
+  const result = data as {
+    import_id: string;
+    items: number;
+    links: number;
+    entries_on_new?: number;
+    entries_attached?: number;
+    entries_already_logged?: number;
+  };
   revalidatePath("/library");
   revalidatePath("/");
   revalidatePath("/imports");
-  return { ok: true, importId: result.import_id, items: result.items, links: result.links };
+  for (const p of plan.rows) if (p.attachTo) revalidatePath(`/items/${p.attachTo.id}`);
+  return {
+    ok: true,
+    importId: result.import_id,
+    items: result.items,
+    links: result.links,
+    entriesOnNew: result.entries_on_new ?? 0,
+    entriesAttached: result.entries_attached ?? 0,
+    entriesAlreadyLogged: (result.entries_already_logged ?? 0) + plan.summary.entriesAlreadyLogged,
+  };
 }

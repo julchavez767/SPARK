@@ -2,6 +2,7 @@ import Link from "next/link";
 import { StatusPill, TypeBadge } from "@/components/ItemBadges";
 import type { LinkSummary } from "@/lib/items";
 import { previewText } from "@/lib/preview";
+import { formatDateTime, formatShortDate, type TimeCtx } from "@/lib/time";
 import { STATUS_LABEL, TYPE_LABEL, type ItemSummary, type ItemType, type Tag } from "@/lib/types";
 
 /** Solid type colours for the card stripe, tile strip and list dot. */
@@ -11,21 +12,14 @@ export const TYPE_ACCENT: Record<ItemType, string> = {
   system: "bg-[#2f8f5b] dark:bg-[#6fcf97]",
 };
 
-const thisYear = new Date().getFullYear();
-const shortFmt = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric" });
-const longFmt = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric" });
-
-/** "Added Oct 28" — when the item entered SPARK, not when the idea first came up. */
-export function AddedDate({ iso, className = "" }: { iso: string; className?: string }) {
-  const d = new Date(iso);
-  const text = d.getFullYear() === thisYear ? shortFmt.format(d) : longFmt.format(d);
+/**
+ * "Added Oct 28" — when the item entered SPARK (for imports, the import time),
+ * in the viewer's time zone. Never the date the idea first came up.
+ */
+export function AddedDate({ iso, time, className = "" }: { iso: string; time: TimeCtx; className?: string }) {
   return (
-    <time
-      dateTime={iso}
-      title="Date added to SPARK (for imports, the import date unless the file gave one)"
-      className={className}
-    >
-      Added {text}
+    <time dateTime={iso} title={`Added to SPARK ${formatDateTime(iso, time)}`} className={className}>
+      Added {formatShortDate(iso, time)}
     </time>
   );
 }
@@ -44,9 +38,12 @@ type Props = {
   tags?: Tag[];
   links?: LinkSummary;
   reasoning?: number;
+  /** When the item entered SPARK: the import time for imported items, otherwise when it was created. */
+  addedAt: string;
+  time: TimeCtx;
 };
 
-export function LibraryCard({ item, categoryName, tags, links, reasoning }: Props) {
+export function LibraryCard({ item, categoryName, tags, links, reasoning, addedAt, time }: Props) {
   const preview = previewText(item.title, item.original_body);
   const shownTags = (tags ?? []).slice(0, 2);
   const count = links?.count ?? 0;
@@ -86,14 +83,14 @@ export function LibraryCard({ item, categoryName, tags, links, reasoning }: Prop
             <span key={t.id} className="min-w-0 truncate">#{t.name}</span>
           ))}
           {reasoning ? <span className="shrink-0 text-[#7c3aed] dark:text-[#c4a7f5]">{reasoning} reasoning</span> : null}
-          <AddedDate iso={item.created_at} className="ml-auto shrink-0 pl-2" />
+          <AddedDate iso={addedAt} time={time} className="ml-auto shrink-0 pl-2" />
         </div>
       </div>
     </Link>
   );
 }
 
-export function LibraryRow({ item, categoryName, links, reasoning }: Props) {
+export function LibraryRow({ item, categoryName, links, reasoning, addedAt, time }: Props) {
   const count = links?.count ?? 0;
   return (
     <Link href={`/items/${item.id}`} className="flex items-center gap-3 px-4 py-3 hover:bg-bg focus-visible:bg-bg">
@@ -120,7 +117,7 @@ export function LibraryRow({ item, categoryName, links, reasoning }: Props) {
             <span aria-hidden="true"> ✎</span>
           </span>
         ) : null}
-        <AddedDate iso={item.created_at} className="hidden w-24 text-right sm:inline" />
+        <AddedDate iso={addedAt} time={time} className="hidden w-24 text-right sm:inline" />
       </span>
     </Link>
   );
