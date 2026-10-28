@@ -7,7 +7,7 @@ export const TYPE_STYLE: Record<ItemType, { text: string; bg: string; border: st
   system: { text: "text-[#2f8f5b] dark:text-[#6fcf97]", bg: "bg-[#2f8f5b]/10", border: "border-[#2f8f5b]" },
 };
 
-function TypeIcon({ type }: { type: ItemType }) {
+export function TypeIcon({ type }: { type: ItemType }) {
   const common = { viewBox: "0 0 24 24", className: "h-3.5 w-3.5", "aria-hidden": true as const };
   if (type === "idea") {
     return (

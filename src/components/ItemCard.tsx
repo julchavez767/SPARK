@@ -1,5 +1,6 @@
 import Link from "next/link";
 import type { ItemSummary, Tag } from "@/lib/types";
+import { previewText } from "@/lib/preview";
 import { StatusPill, TypeBadge } from "./ItemBadges";
 
 const dateFmt = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric" });
@@ -7,8 +8,7 @@ const dateFmt = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric
 type Props = { item: ItemSummary; linkCount?: number; categoryName?: string; tags?: Tag[] };
 
 export function ItemCard({ item, linkCount, categoryName, tags }: Props) {
-  // Preview skips the first line when it is already the title.
-  const rest = (item.original_body ?? "").trim().split(/\r?\n/).slice(1).join(" ").trim();
+  const rest = previewText(item.title, item.original_body);
   const shownTags = (tags ?? []).slice(0, 3);
   const moreTags = (tags?.length ?? 0) - shownTags.length;
 

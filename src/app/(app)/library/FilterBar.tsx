@@ -36,7 +36,7 @@ export function FilterBar({ q, type, status, cat, tag, importId, sort, categorie
   const submit = (e: React.ChangeEvent<HTMLSelectElement>) => e.currentTarget.form?.requestSubmit();
 
   return (
-    <form action="/library" method="get" className="mb-4 grid grid-cols-3 gap-2">
+    <form action="/library" method="get" className="mb-3 grid grid-cols-3 gap-2">
       {q && <input type="hidden" name="q" value={q} />}
       {type && <input type="hidden" name="type" value={type} />}
       {tag && <input type="hidden" name="tag" value={tag} />}
