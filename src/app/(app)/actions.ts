@@ -11,6 +11,7 @@ import {
   deriveTitle,
   detailsSchema,
   linkSchema,
+  reasoningSchema,
   statusSchema,
   titleSchema,
 } from "@/lib/validation/idea";
@@ -223,6 +224,34 @@ export async function updateDetails(_prev: FormState, formData: FormData): Promi
   revalidatePath(`/items/${d.id}`);
   revalidatePath("/library");
   return { ok: true, at: Date.now() };
+}
+
+export type ReasoningState = { error?: string; savedAt?: number };
+
+/** Add a Reasoning Log entry. Append-only: entries are never edited here. */
+export async function addReasoning(_prev: ReasoningState, formData: FormData): Promise<ReasoningState> {
+  const parsed = reasoningSchema.safeParse({
+    itemId: formData.get("itemId"),
+    kind: formData.get("kind"),
+    body: formData.get("body"),
+  });
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "That entry couldn't be read." };
+
+  const { supabase, user } = await client();
+  if (!user) return { error: "Your session expired. Sign in again; your text is still in the box." };
+
+  // Row-level security and the (item_id, user_id) foreign key mean this only
+  // succeeds for the signed-in user's own items.
+  const { error } = await supabase
+    .from("item_entries")
+    .insert({ item_id: parsed.data.itemId, kind: parsed.data.kind, body: parsed.data.body });
+  if (error) {
+    console.error("addReasoning failed", { itemId: parsed.data.itemId, error: error.message });
+    return { error: "Couldn't save that entry. Your text is still in the box; try again." };
+  }
+
+  revalidatePath(`/items/${parsed.data.itemId}`);
+  return { savedAt: Date.now() };
 }
 
 /** Deleting is explicit and only from the item page. Links and timeline go with it. */

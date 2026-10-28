@@ -84,6 +84,12 @@ export const detailsSchema = z.object({
   origin: z.enum(["", "mine", "co_developed", "suggested"]).transform((v) => (v === "" ? null : v)),
 });
 
+export const reasoningSchema = z.object({
+  itemId: uuid,
+  kind: z.enum(["note", "hypothesis", "challenge", "decision", "lesson"]).catch("note"),
+  body: z.string().trim().min(1, "Write something first.").max(10000, "Entries are limited to 10,000 characters."),
+});
+
 export const categoryNameSchema = z.string().trim().min(1, "Give the category a name.").max(60, "Keep it under 60 characters.").transform((v) => v.replace(/\s+/g, " "));
 
 export const searchSchema = z.object({

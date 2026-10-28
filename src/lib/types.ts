@@ -73,6 +73,29 @@ export const ITEM_SUMMARY_COLUMNS =
 export type Category = { id: string; name: string };
 export type Tag = { id: string; name: string };
 
+/** Reasoning Log entry types, in the order shown. Note is the default. */
+export const REASONING_KINDS = ["note", "hypothesis", "challenge", "decision", "lesson"] as const;
+export type ReasoningKind = (typeof REASONING_KINDS)[number];
+export const REASONING_LABEL: Record<ReasoningKind, string> = {
+  note: "Note",
+  hypothesis: "Hypothesis",
+  challenge: "Challenge",
+  decision: "Decision",
+  lesson: "Lesson",
+};
+export const REASONING_HINT: Record<ReasoningKind, string> = {
+  note: "Anything you're thinking about this…",
+  hypothesis: "What do you believe might be true?",
+  challenge: "What could be wrong, risky, or assumed?",
+  decision: "What did you decide, and why?",
+  lesson: "What did you learn?",
+};
+export function isReasoningKind(value: unknown): value is ReasoningKind {
+  return typeof value === "string" && (REASONING_KINDS as readonly string[]).includes(value);
+}
+
+export type ReasoningEntry = { id: string; kind: ReasoningKind; body: string; created_at: string };
+
 export const SORTS = ["newest", "oldest", "updated", "title"] as const;
 export type SortKey = (typeof SORTS)[number];
 export const SORT_LABEL: Record<SortKey, string> = {

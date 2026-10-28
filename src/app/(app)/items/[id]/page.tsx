@@ -14,11 +14,17 @@ import {
   type ItemStatus,
   type ItemSummary,
   type ItemType,
+  REASONING_KINDS,
+  type ReasoningEntry,
 } from "@/lib/types";
 import { loadCategories, tagsByItem } from "@/lib/items";
 import { Details } from "./Details";
 import { RelatedForms, RenameTitle } from "./RelatedForms";
+import { ReasoningLog } from "./ReasoningLog";
 import { StatusPicker } from "./StatusPicker";
+
+/** Automatic events. The Reasoning Log (written by you) is shown separately. */
+const HISTORY_KINDS = ["status_change", "link_removed"] as const;
 
 export const metadata: Metadata = { title: "Item" };
 
@@ -53,18 +59,20 @@ export default async function ItemPage({ params }: { params: Promise<{ id: strin
   // Load links (both directions), the linked items, the timeline, and candidates to link — in parallel.
   const [linksRes, entriesRes, candidatesRes] = await Promise.all([
     supabase.from("item_links").select("a_id, b_id").or(`a_id.eq.${id},b_id.eq.${id}`),
-    supabase.from("item_entries").select("id, kind, body, data, created_at").eq("item_id", id).order("created_at", { ascending: false }).limit(20),
+    supabase.from("item_entries").select("id, kind, body, data, created_at").eq("item_id", id).in("kind", [...HISTORY_KINDS]).order("created_at", { ascending: false }).limit(20),
     supabase.from("items").select("id, type, title").neq("id", id).order("title").limit(500),
     supabase.from("items").update({ last_viewed_at: new Date().toISOString() }).eq("id", id),
   ]);
 
-  const [categories, tagMap, importRes] = await Promise.all([
+  const [categories, tagMap, importRes, reasoningRes] = await Promise.all([
     loadCategories(supabase),
     tagsByItem(supabase, [id]),
     item.import_id
       ? supabase.from("imports").select("id, file_name, created_at").eq("id", item.import_id).maybeSingle()
       : Promise.resolve({ data: null }),
+    supabase.from("item_entries").select("id, kind, body, created_at").eq("item_id", id).in("kind", [...REASONING_KINDS]).order("created_at", { ascending: false }).limit(500),
   ]);
+  const reasoning = (reasoningRes.data ?? []) as ReasoningEntry[];
   const imp = importRes.data as { id: string; file_name: string | null; created_at: string } | null;
 
   const relatedIds = (linksRes.data ?? []).map((l) => (l.a_id === id ? l.b_id : l.a_id) as string);
@@ -111,6 +119,13 @@ export default async function ItemPage({ params }: { params: Promise<{ id: strin
           </div>
         </section>
       )}
+
+      <section aria-labelledby="reasoning-heading" className="mt-8">
+        <h2 id="reasoning-heading" className="mb-2 text-xs font-medium uppercase tracking-wide text-muted">
+          Reasoning log {reasoning.length > 0 && <span className="normal-case tracking-normal">({reasoning.length})</span>}
+        </h2>
+        <ReasoningLog itemId={item.id} entries={reasoning} />
+      </section>
 
       {/* Everything linked to this item, grouped by type */}
       <section aria-labelledby="related-heading" className="mt-8">
