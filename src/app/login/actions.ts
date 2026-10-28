@@ -22,12 +22,16 @@ export async function sendMagicLink(_prev: LoginState, formData: FormData): Prom
       : env.siteUrl;
 
   const supabase = await createClient();
+  // Invitation only: an email without a SPARK account never creates one.
   const { error } = await supabase.auth.signInWithOtp({
     email: parsed.data,
-    options: { emailRedirectTo: `${base}/auth/callback` },
+    options: { emailRedirectTo: `${base}/auth/callback`, shouldCreateUser: false },
   });
 
-  if (error) {
+  // An address with no account gets the same reply as one with an account,
+  // so the form never reveals who has a SPARK account.
+  const noAccount = error && (error.code === "otp_disabled" || error.code === "signup_disabled" || /signups? not allowed/i.test(error.message));
+  if (error && !noAccount) {
     // Don't leak whether an account exists; surface rate limits plainly.
     const message =
       error.status === 429

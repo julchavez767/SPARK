@@ -13,7 +13,7 @@ export function LoginForm() {
       <div role="status" className="mt-8 rounded-[14px] border border-line bg-surface p-5">
         <p className="font-medium">Check your inbox.</p>
         <p className="mt-1 text-sm text-muted">
-          We sent a sign-in link to <span className="text-ink">{state.email}</span>. Open it on this device.
+          If <span className="text-ink">{state.email}</span> has a SPARK account, a sign-in link is on its way. Open it on this device.
         </p>
       </div>
     );
