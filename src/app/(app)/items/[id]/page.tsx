@@ -121,9 +121,12 @@ export default async function ItemPage({ params }: { params: Promise<{ id: strin
       )}
 
       <section aria-labelledby="reasoning-heading" className="mt-8">
-        <h2 id="reasoning-heading" className="mb-2 text-xs font-medium uppercase tracking-wide text-muted">
+        <h2 id="reasoning-heading" className="text-xs font-medium uppercase tracking-wide text-muted">
           Reasoning log {reasoning.length > 0 && <span className="normal-case tracking-normal">({reasoning.length})</span>}
         </h2>
+        <p className="mb-3 mt-1 text-sm text-muted">
+          Capture what you’re thinking, questioning, deciding, and learning as your idea evolves.
+        </p>
         <ReasoningLog itemId={item.id} entries={reasoning} />
       </section>
 

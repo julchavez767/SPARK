@@ -58,7 +58,9 @@ export function ReasoningLog({ itemId, entries }: { itemId: string; entries: Rea
         <input type="hidden" name="itemId" value={itemId} />
         <input type="hidden" name="kind" value={kind} />
 
-        <div role="radiogroup" aria-label="Entry type" className="mb-2 flex flex-wrap gap-1">
+        <p id={`capture-prompt-${itemId}`} className="px-1 text-sm font-medium">What would you like to capture?</p>
+        <p className="mb-2 px-1 text-xs text-muted">Choose a type, write your thought, then tap Add to save it.</p>
+        <div role="radiogroup" aria-labelledby={`capture-prompt-${itemId}`} className="mb-2 flex flex-wrap gap-1">
           {REASONING_KINDS.map((k) => (
             <button
               key={k}
@@ -113,9 +115,16 @@ export function ReasoningLog({ itemId, entries }: { itemId: string; entries: Rea
         </div>
       </form>
 
+      {/* Saved entries, under their own heading */}
+      {entries.length > 0 && (
+        <h3 className="mt-6 text-sm font-medium">
+          Previous reflections <span className="font-normal text-muted">({entries.length})</span>
+        </h3>
+      )}
+
       {/* Filter */}
       {entries.length > 0 && usedKinds.length > 1 && (
-        <div role="group" aria-label="Show" className="mt-3 flex flex-wrap gap-1.5">
+        <div role="group" aria-label="Show" className="mt-2 flex flex-wrap gap-1.5">
           <FilterChip active={filter === "all"} onClick={() => setFilter("all")}>
             All {entries.length}
           </FilterChip>
@@ -133,7 +142,7 @@ export function ReasoningLog({ itemId, entries }: { itemId: string; entries: Rea
           Nothing logged yet. Capture a hypothesis, a challenge, a decision and why, or a lesson as this evolves.
         </p>
       ) : (
-        <ol className="mt-3 space-y-2">
+        <ol className={`${usedKinds.length > 1 ? "mt-3" : "mt-2"} space-y-2`}>
           {shown.map((e) => (
             <li key={e.id} className="rounded-[12px] border border-line bg-surface px-3 py-2.5">
               <div className="mb-1 flex items-center gap-2">
