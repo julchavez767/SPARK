@@ -1,4 +1,5 @@
 import type { NextConfig } from "next";
+import { assertEnvironmentIsolation } from "./config/env-isolation.cjs";
 
 const isDev = process.env.NODE_ENV !== "production";
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
@@ -37,4 +38,11 @@ const nextConfig: NextConfig = {
   },
 };
 
-export default nextConfig;
+// Preview and development builds stop here if they point at the production database.
+// Runs only while building or starting the dev server; production builds are not checked.
+export default async function config(phase: string): Promise<NextConfig> {
+  if (phase === "phase-production-build" || phase === "phase-development-server") {
+    await assertEnvironmentIsolation();
+  }
+  return nextConfig;
+}
